@@ -19,6 +19,9 @@ export default function Home() {
   const [settings, setSettings] = useState({
     showOnlyWrongAnswers: false
   })
+  // Neue State-Variablen für mobile Navigation
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false)
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
 
   const { userProfile, saveProgress, loadCatalogProgress } = useAuth()
 
@@ -198,21 +201,59 @@ export default function Home() {
   const currentQuestion = filteredQuestions[currentQuestionIndex];
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar
-        catalogs={questionCatalogs}
-        currentCatalogId={currentCatalogId}
-        currentModuleId={currentModuleId}
-        currentCategoryId={currentCategoryId}
-        currentQuestionId={currentQuestion?.id || ''}
-        progress={progress}
-        onSelectCatalog={handleSelectCatalog}
-        onSelectModule={handleSelectModule}
-        onSelectCategory={handleSelectCategory}
-        onSelectQuestion={handleSelectQuestion}
-      />
+    <div className="flex h-screen bg-gray-100 relative">
+      {/* Mobile Navigation Bar */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white shadow-md z-30 flex justify-between items-center px-4">
+        <button
+          onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+          className="p-2 hover:bg-gray-100 rounded-lg"
+        >
+          <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <h1 className="text-lg font-semibold text-gray-800">Haftify</h1>
+        <button
+          onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+          className="p-2 hover:bg-gray-100 rounded-lg"
+        >
+          <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+          </svg>
+        </button>
+      </div>
 
-      <div className="flex-1 overflow-auto">
+      {/* Left Sidebar */}
+      <div 
+        className={`fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity duration-300 lg:hidden ${
+          isLeftSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setIsLeftSidebarOpen(false)}
+      />
+      <div
+        className={`fixed lg:static inset-y-0 left-0 w-80 bg-white transform transition-transform duration-300 ease-in-out z-50 lg:transform-none ${
+          isLeftSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0`}
+      >
+        <Sidebar
+          catalogs={questionCatalogs}
+          currentCatalogId={currentCatalogId}
+          currentModuleId={currentModuleId}
+          currentCategoryId={currentCategoryId}
+          currentQuestionId={currentQuestion?.id || ''}
+          progress={progress}
+          onSelectCatalog={handleSelectCatalog}
+          onSelectModule={handleSelectModule}
+          onSelectCategory={handleSelectCategory}
+          onSelectQuestion={(id) => {
+            handleSelectQuestion(id)
+            setIsLeftSidebarOpen(false)
+          }}
+        />
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto pt-16 lg:pt-0">
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           {filteredQuestions.length > 0 ? (
             <>
@@ -318,11 +359,24 @@ export default function Home() {
         </div>
       </div>
 
-      <RightSidebar
-        progress={progress}
-        settings={settings}
-        onUpdateSettings={setSettings}
+      {/* Right Sidebar */}
+      <div 
+        className={`fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity duration-300 lg:hidden ${
+          isRightSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setIsRightSidebarOpen(false)}
       />
+      <div
+        className={`fixed lg:static inset-y-0 right-0 w-80 bg-white transform transition-transform duration-300 ease-in-out z-50 lg:transform-none ${
+          isRightSidebarOpen ? 'translate-x-0' : 'translate-x-full'
+        } lg:translate-x-0`}
+      >
+        <RightSidebar
+          progress={progress}
+          settings={settings}
+          onUpdateSettings={setSettings}
+        />
+      </div>
     </div>
   )
 } 
