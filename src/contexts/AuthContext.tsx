@@ -197,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Sende Verifizierungs-E-Mail mit den gleichen Settings
         const actionCodeSettings = {
           url: process.env.NODE_ENV === 'production'
-            ? `https://${process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}/verify-email`
+            ? 'https://haftify.de/verify-email'
             : 'http://localhost:3000/verify-email',
           handleCodeInApp: false
         };
@@ -328,7 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const actionCodeSettings = {
       url: process.env.NODE_ENV === 'production'
-        ? `https://${process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}/verify-email`
+        ? 'https://haftify.de/verify-email'
         : 'http://localhost:3000/verify-email',
       handleCodeInApp: false
     };
