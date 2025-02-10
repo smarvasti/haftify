@@ -59,6 +59,13 @@ export default function LoginPage() {
           fill
           className="object-cover"
           priority
+          sizes="(max-width: 1024px) 0vw, 50vw"
+          quality={85}
+          onError={(e) => {
+            // Fallback Hintergrundfarbe bei Bildfehler
+            const target = e.target as HTMLElement;
+            target.parentElement!.style.backgroundColor = '#1e3a8a';
+          }}
         />
         <div className="relative z-20 p-12 flex flex-col justify-center h-full">
           <h1 className="text-4xl font-bold mb-4 text-white">

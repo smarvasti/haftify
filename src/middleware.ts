@@ -5,16 +5,20 @@ export async function middleware(request: NextRequest) {
   const authCookie = request.cookies.get('session')
   const { pathname } = request.nextUrl
 
-  // Öffentliche Routen
-  if (['/login', '/register', '/verify-email'].includes(pathname)) {
-    if (authCookie) {
-      return NextResponse.redirect(new URL('/', request.url))
-    }
+  // Statische Ressourcen und API-Routen überspringen
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api/') ||
+    pathname.includes('favicon.ico') ||
+    pathname.includes('.png') ||
+    pathname.includes('.jpg') ||
+    pathname.includes('.svg')
+  ) {
     return NextResponse.next()
   }
 
-  // API-Routen überspringen
-  if (pathname.startsWith('/api/')) {
+  // Öffentliche Routen
+  if (['/login', '/register', '/verify-email'].includes(pathname)) {
     return NextResponse.next()
   }
 
@@ -23,33 +27,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  try {
-    // Verifiziere den Token über die API-Route
-    const response = await fetch(new URL('/api/verify-token', request.url), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ token: authCookie.value }),
-    });
-
-    const { valid, email_verified } = await response.json();
-
-    if (!valid) {
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
-
-    if (!email_verified && pathname !== '/verify-email') {
-      return NextResponse.redirect(new URL('/verify-email', request.url))
-    }
-  } catch (error) {
-    console.error('Middleware error:', error);
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
 } 

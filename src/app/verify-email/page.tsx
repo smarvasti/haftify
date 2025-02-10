@@ -13,16 +13,23 @@ export default function VerifyEmailPage() {
   const router = useRouter();
   const { user, resendVerificationEmail } = useAuth();
 
-  // Überprüfe den Verifizierungsstatus beim Laden der Seite
+  // Überprüfe den Verifizierungsstatus nur einmal beim ersten Laden
   useEffect(() => {
+    let redirectTimer: NodeJS.Timeout;
+    
     if (user?.emailVerified) {
       setIsVerified(true);
-      // Automatische Weiterleitung nach 3 Sekunden
-      const timer = setTimeout(() => {
-        router.push('/login');
-      }, 3000);
-      return () => clearTimeout(timer);
+      // Längere Verzögerung für die Weiterleitung
+      redirectTimer = setTimeout(() => {
+        router.replace('/login');
+      }, 5000);
     }
+
+    return () => {
+      if (redirectTimer) {
+        clearTimeout(redirectTimer);
+      }
+    };
   }, [user, router]);
 
   async function handleResendVerification() {
