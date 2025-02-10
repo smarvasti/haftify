@@ -7,8 +7,31 @@ import { AuthProvider } from '@/contexts/AuthContext'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Lernplattform',
-  description: 'Eine moderne Lernplattform für Multiple-Choice-Fragen',
+  title: 'Haftify - Die Lernplattform für Haftpflicht Underwriter',
+  description: 'Meistern Sie komplexe Risiken mit unserer spezialisierten Lernplattform für Underwriter. Praxisnahe Fallstudien, aktuelle Rechtsprechung und gezielte Prüfungsvorbereitung.',
+  metadataBase: new URL('https://haftify.de'),
+  openGraph: {
+    title: 'Haftify - Die Lernplattform für Haftpflicht Underwriter',
+    description: 'Meistern Sie komplexe Risiken mit unserer spezialisierten Lernplattform für Underwriter. Praxisnahe Fallstudien, aktuelle Rechtsprechung und gezielte Prüfungsvorbereitung.',
+    url: 'https://haftify.de',
+    siteName: 'Haftify',
+    images: [
+      {
+        url: '/img/og-image.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Haftify - Die Lernplattform für Haftpflicht Underwriter',
+      },
+    ],
+    locale: 'de_DE',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Haftify - Die Lernplattform für Haftpflicht Underwriter',
+    description: 'Meistern Sie komplexe Risiken mit unserer spezialisierten Lernplattform für Underwriter. Praxisnahe Fallstudien, aktuelle Rechtsprechung und gezielte Prüfungsvorbereitung.',
+    images: ['/img/og-image.jpg'],
+  },
 }
 
 export default function RootLayout({
