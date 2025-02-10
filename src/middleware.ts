@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   const authCookie = request.cookies.get('session')
-  const { pathname } = request.nextUrl
+  const { pathname, searchParams } = request.nextUrl
 
   // Statische Ressourcen und API-Routen überspringen
   if (
@@ -18,7 +18,20 @@ export async function middleware(request: NextRequest) {
   }
 
   // Öffentliche Routen
-  if (['/login', '/register', '/verify-email'].includes(pathname)) {
+  if (['/login', '/register'].includes(pathname)) {
+    return NextResponse.next()
+  }
+
+  // Spezielle Behandlung für verify-email
+  if (pathname === '/verify-email') {
+    // Wenn es ein Verifizierungslink ist (mit oobCode), erlaube den Zugriff
+    if (searchParams.get('mode') === 'verifyEmail' && searchParams.get('oobCode')) {
+      return NextResponse.next()
+    }
+    // Wenn kein Auth-Cookie vorhanden ist, zum Login umleiten
+    if (!authCookie) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
     return NextResponse.next()
   }
 

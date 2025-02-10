@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
+import { applyActionCode } from 'firebase/auth';
+import { auth } from '@/config/firebase';
 
 export default function VerifyEmailPage() {
   const [loading, setLoading] = useState(false);
@@ -11,26 +13,36 @@ export default function VerifyEmailPage() {
   const [success, setSuccess] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, resendVerificationEmail } = useAuth();
 
-  // Überprüfe den Verifizierungsstatus nur einmal beim ersten Laden
+  // Verarbeite den Verifizierungslink
   useEffect(() => {
-    let redirectTimer: NodeJS.Timeout;
-    
-    if (user?.emailVerified) {
-      setIsVerified(true);
-      // Längere Verzögerung für die Weiterleitung
-      redirectTimer = setTimeout(() => {
-        router.replace('/login');
-      }, 5000);
+    const mode = searchParams.get('mode');
+    const oobCode = searchParams.get('oobCode');
+
+    async function verifyEmail() {
+      if (mode === 'verifyEmail' && oobCode) {
+        try {
+          setLoading(true);
+          await applyActionCode(auth, oobCode);
+          setIsVerified(true);
+          setSuccess(true);
+          // Warte 5 Sekunden und leite dann zum Login weiter
+          setTimeout(() => {
+            router.replace('/login');
+          }, 5000);
+        } catch (error) {
+          console.error('Fehler bei der E-Mail-Verifizierung:', error);
+          setError('Der Verifizierungslink ist ungültig oder abgelaufen. Bitte fordern Sie einen neuen Link an.');
+        } finally {
+          setLoading(false);
+        }
+      }
     }
 
-    return () => {
-      if (redirectTimer) {
-        clearTimeout(redirectTimer);
-      }
-    };
-  }, [user, router]);
+    verifyEmail();
+  }, [searchParams, router]);
 
   async function handleResendVerification() {
     try {
