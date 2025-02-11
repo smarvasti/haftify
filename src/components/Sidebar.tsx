@@ -3,6 +3,7 @@ import { Catalog, QuestionProgress } from '@/types/questions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import ProfileModal from './ProfileModal';
+import Link from 'next/link';
 
 interface SidebarProps {
   catalogs: Catalog[];
@@ -153,112 +154,47 @@ export default function Sidebar({
 
         {/* Navigation */}
         <div className="flex-1 p-4">
-          <h2 className="text-lg font-semibold mb-4">Prüfungskataloge</h2>
+          <div className="flex items-center gap-2 mb-4">
+            <Link
+              href="/"
+              className="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                />
+              </svg>
+              <span className="ml-1">Zurück zur Übersicht</span>
+            </Link>
+          </div>
+          <h2 className="text-lg font-semibold mb-4">
+            {catalogs.find(c => c.id === currentCatalogId)?.title || 'Prüfungskatalog'}
+          </h2>
           
           <div className="space-y-4">
             {catalogs.map((catalog) => (
-              <div key={catalog.id} className="space-y-2 border-b border-gray-100 pb-4 last:border-b-0">
-                <div className="space-y-2">
-                  <button
-                    onClick={() => onSelectCatalog(catalog.id)}
-                    className={`w-full text-left p-2 rounded-lg transition-colors ${
-                      currentCatalogId === catalog.id
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Katalog-Icon mit dynamischer Farbe */}
-                      <svg 
-                        className={`w-5 h-5 ${
-                          currentCatalogId === catalog.id
-                            ? 'text-blue-600'
-                            : 'text-gray-500'
-                        }`} 
-                        fill="none" 
-                        viewBox="0 0 24 24" 
-                        stroke="currentColor"
-                      >
-                        <path 
-                          strokeLinecap="round" 
-                          strokeLinejoin="round" 
-                          strokeWidth={2} 
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" 
-                        />
-                      </svg>
-                      <span className="flex-1">
-                        {catalog.title} ({catalog.year})
-                      </span>
-                    </div>
-                  </button>
-                  
-                  {/* Fortschrittsbalken für den Katalog */}
-                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden ml-10">
-                    {(() => {
-                      const catalogQuestions = catalog.modules.flatMap(m => 
-                        m.categories.flatMap(c => c.questions)
-                      );
-                      const answered = catalogQuestions.filter(q => 
-                        progress.some(p => p.questionId === q.id)
-                      ).length;
-                      const correct = catalogQuestions.filter(q => 
-                        progress.some(p => p.questionId === q.id && p.isCorrect)
-                      ).length;
-                      const total = catalogQuestions.length;
-                      
-                      return (
-                        <>
-                          <div 
-                            className="h-full bg-green-500 transition-all duration-300"
-                            style={{ 
-                              width: `${(correct / total) * 100}%`,
-                              float: 'left'
-                            }}
-                          />
-                          <div 
-                            className="h-full bg-red-500 transition-all duration-300"
-                            style={{ 
-                              width: `${((answered - correct) / total) * 100}%`,
-                              float: 'left'
-                            }}
-                          />
-                        </>
-                      );
-                    })()}
-                  </div>
-                  
-                  {/* Fortschrittsinfo */}
-                  <div className="text-xs text-gray-500 flex justify-between px-1 ml-10">
-                    {(() => {
-                      const catalogQuestions = catalog.modules.flatMap(m => 
-                        m.categories.flatMap(c => c.questions)
-                      );
-                      const correct = catalogQuestions.filter(q => 
-                        progress.some(p => p.questionId === q.id && p.isCorrect)
-                      ).length;
-                      const incorrect = catalogQuestions.filter(q => 
-                        progress.some(p => p.questionId === q.id && !p.isCorrect)
-                      ).length;
-                      const total = catalogQuestions.length;
-                      
-                      return (
-                        <>
-                          <span>{correct} richtig</span>
-                          <span>{incorrect} falsch</span>
-                          <span>{total - correct - incorrect} offen</span>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {currentCatalogId === catalog.id && (
-                  <div className="ml-10 space-y-2">
+              catalog.id === currentCatalogId && (
+                <div key={catalog.id} className="space-y-2">
+                  <div className="ml-[18px] space-y-2 relative pr-4">
+                    {/* Vertikale Linie für Module */}
+                    <div className="absolute left-0 top-4 h-[calc(100%-1rem)] w-px bg-gray-200" />
+                    
                     {catalog.modules.map((module) => (
-                      <div key={module.id} className="space-y-2">
+                      <div key={module.id} className="space-y-2 relative">
+                        {/* Horizontale Verbindungslinie */}
+                        <div className="absolute left-0 top-4 w-2 h-px bg-gray-200" />
+                        
                         <button
                           onClick={() => onSelectModule(module.id)}
-                          className={`w-full text-left p-2 rounded-lg transition-colors ${
+                          className={`w-full text-left p-2 rounded-lg transition-colors ml-4 ${
                             currentModuleId === module.id
                               ? 'bg-blue-50 text-blue-600'
                               : 'hover:bg-gray-50'
@@ -268,12 +204,18 @@ export default function Sidebar({
                         </button>
 
                         {currentModuleId === module.id && (
-                          <div className="ml-6 space-y-1">
+                          <div className="ml-8 space-y-1 relative">
+                            {/* Vertikale Linie für Kategorien */}
+                            <div className="absolute left-0 top-4 h-[calc(100%-1rem)] w-px bg-gray-200" />
+                            
                             {module.categories.map((category) => (
-                              <div key={category.id} className="space-y-1">
+                              <div key={category.id} className="space-y-1 relative">
+                                {/* Horizontale Verbindungslinie */}
+                                <div className="absolute left-0 top-4 w-2 h-px bg-gray-200" />
+                                
                                 <button
                                   onClick={() => onSelectCategory(category.id)}
-                                  className={`w-full text-left p-2 text-sm rounded-lg transition-colors ${
+                                  className={`w-full text-left p-2 text-sm rounded-lg transition-colors ml-4 ${
                                     currentCategoryId === category.id
                                       ? 'bg-gray-100 text-blue-600'
                                       : 'hover:bg-gray-50'
@@ -291,30 +233,36 @@ export default function Sidebar({
                                 </button>
 
                                 {currentCategoryId === category.id && (
-                                  <div className="ml-6 space-y-1">
-                                    {category.questions.map((question) => (
-                                      <button
-                                        key={question.id}
-                                        onClick={() => onSelectQuestion(question.id)}
-                                        className={`w-full text-left p-2 text-sm rounded-lg transition-colors flex items-center gap-2 ${
-                                          currentQuestionId === question.id
-                                            ? 'bg-gray-50 text-blue-600'
-                                            : 'hover:bg-gray-50'
-                                        }`}
-                                      >
-                                        {/* Status-Indikator */}
-                                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                          getQuestionStatus(question.id) === 'correct'
-                                            ? 'bg-green-500'
-                                            : getQuestionStatus(question.id) === 'incorrect'
-                                            ? 'bg-red-500'
-                                            : 'bg-gray-300'
-                                        }`} />
+                                  <div className="ml-8 space-y-1 relative">
+                                    {/* Vertikale Linie für Fragen */}
+                                    <div className="absolute left-0 top-4 h-[calc(100%-1rem)] w-px bg-gray-200" />
+                                    
+                                    {category.questions.map((question, index, array) => (
+                                      <div key={question.id} className="relative">
+                                        {/* Horizontale Verbindungslinie */}
+                                        <div className="absolute left-0 top-4 w-2 h-px bg-gray-200" />
                                         
-                                        <span className="truncate">
-                                          Frage {question.id} ({question.points} {question.points === 1 ? 'Punkt' : 'Punkte'})
-                                        </span>
-                                      </button>
+                                        <button
+                                          onClick={() => onSelectQuestion(question.id)}
+                                          className={`w-full text-left p-2 text-sm rounded-lg transition-colors ml-4 flex items-center gap-2 ${
+                                            currentQuestionId === question.id
+                                              ? 'bg-gray-50 text-blue-600'
+                                              : 'hover:bg-gray-50'
+                                          }`}
+                                        >
+                                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                            getQuestionStatus(question.id) === 'correct'
+                                              ? 'bg-green-500'
+                                              : getQuestionStatus(question.id) === 'incorrect'
+                                              ? 'bg-red-500'
+                                              : 'bg-gray-300'
+                                          }`} />
+                                          
+                                          <span className="truncate">
+                                            Frage {question.id} ({question.points} {question.points === 1 ? 'Punkt' : 'Punkte'})
+                                          </span>
+                                        </button>
+                                      </div>
                                     ))}
                                   </div>
                                 )}
@@ -325,8 +273,8 @@ export default function Sidebar({
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )
             ))}
           </div>
         </div>

@@ -7,376 +7,237 @@ import RightSidebar from '@/components/RightSidebar'
 import { QuestionProgress } from '@/types/questions'
 import { useAuth } from '@/contexts/AuthContext'
 import { Timestamp } from 'firebase/firestore'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-export default function Home() {
-  const [currentCatalogId, setCurrentCatalogId] = useState(questionCatalogs[0].id)
-  const [currentModuleId, setCurrentModuleId] = useState(questionCatalogs[0].modules[0].id)
-  const [currentCategoryId, setCurrentCategoryId] = useState(questionCatalogs[0].modules[0].categories[0].id)
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
-  const [selectedAnswers, setSelectedAnswers] = useState<string[]>([])
-  const [isAnswered, setIsAnswered] = useState(false)
-  const [progress, setProgress] = useState<QuestionProgress[]>([])
-  const [settings, setSettings] = useState({
-    showOnlyWrongAnswers: false
-  })
-  // Neue State-Variablen für mobile Navigation
-  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false)
-  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false)
+export default function Dashboard() {
+  const { userProfile, logout } = useAuth();
+  const router = useRouter();
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
-  const { userProfile, saveProgress, loadCatalogProgress } = useAuth()
-
-  const currentCatalog = questionCatalogs.find(c => c.id === currentCatalogId)!
-  const currentModule = currentCatalog.modules.find(m => m.id === currentModuleId)!
-  const currentCategory = currentModule.categories.find(c => c.id === currentCategoryId)!
-
-  // Lade den Fortschritt aus Firebase beim Start
-  useEffect(() => {
-    async function loadProgress() {
-      const catalogProgress = await loadCatalogProgress(currentCatalogId)
-      const formattedProgress: QuestionProgress[] = Object.values(catalogProgress).map(p => ({
-        questionId: p.questionId,
-        isCorrect: p.isCorrect,
-        selectedAnswers: p.selectedAnswers
-      }))
-      setProgress(formattedProgress)
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push('/login');
+    } catch (error) {
+      console.error('Fehler beim Ausloggen:', error);
     }
-
-    if (userProfile) {
-      loadProgress()
-    }
-  }, [currentCatalogId, userProfile, loadCatalogProgress])
-
-  const handleSelectCatalog = async (catalogId: string) => {
-    const catalog = questionCatalogs.find(c => c.id === catalogId)!
-    setCurrentCatalogId(catalogId)
-    setCurrentModuleId(catalog.modules[0].id)
-    setCurrentCategoryId(catalog.modules[0].categories[0].id)
-    setCurrentQuestionIndex(0)
-    setSelectedAnswers([])
-    setIsAnswered(false)
-
-    // Lade den Fortschritt für den neuen Katalog
-    const catalogProgress = await loadCatalogProgress(catalogId)
-    const formattedProgress: QuestionProgress[] = Object.values(catalogProgress).map(p => ({
-      questionId: p.questionId,
-      isCorrect: p.isCorrect,
-      selectedAnswers: p.selectedAnswers
-    }))
-    setProgress(formattedProgress)
-  }
-
-  const handleSelectModule = (moduleId: string) => {
-    const module = currentCatalog.modules.find(m => m.id === moduleId)!
-    setCurrentModuleId(moduleId)
-    setCurrentCategoryId(module.categories[0].id)
-    setCurrentQuestionIndex(0)
-    setSelectedAnswers([])
-    setIsAnswered(false)
-  }
-
-  const handleSelectCategory = (categoryId: string) => {
-    setCurrentCategoryId(categoryId)
-    setCurrentQuestionIndex(0)
-    setSelectedAnswers([])
-    setIsAnswered(false)
-  }
-
-  const handleSelectQuestion = (questionId: string) => {
-    const category = currentModule.categories.find(c => 
-      c.questions.some(q => q.id === questionId)
-    )!
-    const questionIndex = category.questions.findIndex(q => q.id === questionId)
-    
-    setCurrentCategoryId(category.id)
-    setCurrentQuestionIndex(questionIndex)
-    setSelectedAnswers([])
-    setIsAnswered(false)
-  }
-
-  const handleAnswerSelect = (answer: string) => {
-    if (isAnswered) return
-    
-    if (selectedAnswers.includes(answer)) {
-      setSelectedAnswers(selectedAnswers.filter(a => a !== answer))
-    } else {
-      setSelectedAnswers([...selectedAnswers, answer])
-    }
-  }
-
-  const checkAnswers = async () => {
-    const correctAnswers = currentQuestion.answers
-      .filter(a => a.isCorrect)
-      .map(a => a.text)
-
-    const isCorrect = 
-      selectedAnswers.length === correctAnswers.length &&
-      selectedAnswers.every(a => correctAnswers.includes(a))
-
-    // Speichere den Fortschritt in Firebase
-    await saveProgress(currentCatalogId, {
-      questionId: currentQuestion.id,
-      isCorrect,
-      selectedAnswers,
-      attemptedAt: Timestamp.now()
-    })
-
-    // Aktualisiere den lokalen Fortschritt
-    setProgress(prev => {
-      const existingProgress = prev.find(p => p.questionId === currentQuestion.id)
-      if (existingProgress) {
-        return prev.map(p => 
-          p.questionId === currentQuestion.id
-            ? { ...p, isCorrect, selectedAnswers }
-            : p
-        )
-      }
-      return [...prev, { questionId: currentQuestion.id, isCorrect, selectedAnswers }]
-    })
-
-    setIsAnswered(true)
-  }
-
-  const nextQuestion = () => {
-    setSelectedAnswers([])
-    setIsAnswered(false)
-
-    if (currentQuestionIndex + 1 < currentCategory.questions.length) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1)
-    } else if (currentCategoryId !== currentModule.categories[currentModule.categories.length - 1].id) {
-      const nextCategoryIndex = currentModule.categories.findIndex(c => c.id === currentCategoryId) + 1
-      setCurrentCategoryId(currentModule.categories[nextCategoryIndex].id)
-      setCurrentQuestionIndex(0)
-    } else if (currentModuleId !== currentCatalog.modules[currentCatalog.modules.length - 1].id) {
-      const nextModuleIndex = currentCatalog.modules.findIndex(m => m.id === currentModuleId) + 1
-      setCurrentModuleId(currentCatalog.modules[nextModuleIndex].id)
-      setCurrentCategoryId(currentCatalog.modules[nextModuleIndex].categories[0].id)
-      setCurrentQuestionIndex(0)
-    }
-  }
-
-  const getAnswerStyle = (answer: string) => {
-    if (!isAnswered) {
-      return selectedAnswers.includes(answer) 
-        ? 'bg-blue-100 border-blue-500' 
-        : 'bg-white hover:bg-gray-100'
-    }
-
-    const isCorrectAnswer = currentQuestion.answers.find(a => a.text === answer)?.isCorrect
-    const wasSelected = selectedAnswers.includes(answer)
-
-    if (isCorrectAnswer) return 'bg-green-100 border-green-500'
-    if (wasSelected && !isCorrectAnswer) return 'bg-red-100 border-red-500'
-    return 'bg-white'
-  }
-
-  const getIncorrectAnswerExplanations = () => {
-    if (!isAnswered) return [];
-    
-    return currentQuestion.answers
-      .filter(answer => {
-        const wasSelected = selectedAnswers.includes(answer.text);
-        return (wasSelected && !answer.isCorrect) || (!wasSelected && answer.isCorrect);
-      })
-      .map(answer => ({
-        text: answer.text,
-        explanation: answer.explanation,
-        wasSelected: selectedAnswers.includes(answer.text)
-      }))
-      .filter(item => item.explanation || item.wasSelected);
   };
-
-  // Filtere die Fragen basierend auf den Einstellungen
-  const getFilteredQuestions = () => {
-    if (!settings.showOnlyWrongAnswers) {
-      return currentCategory.questions;
-    }
-    
-    return currentCategory.questions.filter(question => {
-      const questionProgress = progress.find(p => p.questionId === question.id);
-      return questionProgress && !questionProgress.isCorrect;
-    });
-  };
-
-  const filteredQuestions = getFilteredQuestions();
-  const currentQuestion = filteredQuestions[currentQuestionIndex];
 
   return (
-    <div className="flex h-screen bg-gray-100 relative">
-      {/* Mobile Navigation Bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white shadow-md z-30 flex justify-between items-center px-4">
-        <button
-          onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
-          className="p-2 hover:bg-gray-100 rounded-lg"
-        >
-          <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-        <h1 className="text-lg font-semibold text-gray-800">Haftify</h1>
-        <button
-          onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-          className="p-2 hover:bg-gray-100 rounded-lg"
-        >
-          <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-          </svg>
-        </button>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center">
+            <h1 className="text-3xl font-bold text-gray-900">
+              Haftify Lernplattform
+            </h1>
 
-      {/* Left Sidebar */}
-      <div 
-        className={`fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity duration-300 lg:hidden ${
-          isLeftSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={() => setIsLeftSidebarOpen(false)}
-      />
-      <div
-        className={`fixed lg:static inset-y-0 left-0 w-80 bg-white transform transition-transform duration-300 ease-in-out z-50 lg:transform-none ${
-          isLeftSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
-      >
-        <Sidebar
-          catalogs={questionCatalogs}
-          currentCatalogId={currentCatalogId}
-          currentModuleId={currentModuleId}
-          currentCategoryId={currentCategoryId}
-          currentQuestionId={currentQuestion?.id || ''}
-          progress={progress}
-          onSelectCatalog={handleSelectCatalog}
-          onSelectModule={handleSelectModule}
-          onSelectCategory={handleSelectCategory}
-          onSelectQuestion={(id) => {
-            handleSelectQuestion(id)
-            setIsLeftSidebarOpen(false)
-          }}
-        />
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto pt-16 lg:pt-0">
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-          {filteredQuestions.length > 0 ? (
-            <>
-              {/* Progress Bar */}
-              <div className="w-full bg-gray-200 rounded-full h-2.5 mb-6">
-                <div 
-                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                  style={{ width: `${((currentQuestionIndex + 1) / filteredQuestions.length) * 100}%` }}
-                />
-              </div>
-
-              {/* Question Card */}
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <h2 className="text-sm text-gray-600">{currentCatalog.title}</h2>
-                    <h3 className="text-sm text-gray-600">{currentModule.title}</h3>
-                    <h4 className="text-sm text-gray-600">{currentCategory.title}</h4>
-                  </div>
-                  <span className="text-sm text-gray-600">
-                    Frage {currentQuestionIndex + 1} von {filteredQuestions.length}
+            {/* Benutzer-Profil */}
+            <div className="relative">
+              <button
+                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                className="flex items-center gap-3 hover:bg-gray-50 p-2 rounded-lg transition-colors"
+              >
+                {/* Profilbild mit den Initialen des Benutzers */}
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-blue-600 text-sm font-medium">
+                    {userProfile?.displayName
+                      ?.split(' ')
+                      .map(n => n[0])
+                      .join('')
+                      .toUpperCase() || '?'}
                   </span>
                 </div>
-
-                <h1 className="text-2xl font-bold mb-2 text-gray-800">
-                  {currentQuestion.text}
-                </h1>
-                <div className="flex items-center gap-4 mb-6">
-                  <p className="text-gray-600">
-                    {currentQuestion.points} {currentQuestion.points === 1 ? 'Punkt' : 'Punkte'}
-                  </p>
-                  {currentQuestion.isMultipleChoice && (
-                    <span className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                      Mehrfachauswahl möglich
-                    </span>
-                  )}
+                <div className="hidden sm:flex flex-col items-start">
+                  <span className="text-sm font-medium text-gray-900">
+                    {userProfile?.displayName || 'Unbekannter Benutzer'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {userProfile?.email || 'Keine E-Mail'}
+                  </span>
                 </div>
-                
-                <div className="space-y-3">
-                  {currentQuestion.answers.map((answer) => (
-                    <button
-                      key={answer.text}
-                      onClick={() => handleAnswerSelect(answer.text)}
-                      className={`w-full p-4 text-left rounded-lg border-2 transition-colors
-                        ${getAnswerStyle(answer.text)}`}
-                      disabled={isAnswered}
+                {/* Dropdown-Pfeil */}
+                <svg
+                  className={`w-5 h-5 text-gray-400 transition-transform ${
+                    isProfileMenuOpen ? 'transform rotate-180' : ''
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+
+              {/* Benutzermenü Dropdown */}
+              {isProfileMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  <Link
+                    href="/profile"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                    onClick={() => setIsProfileMenuOpen(false)}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
                     >
-                      {answer.text}
-                    </button>
-                  ))}
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                      />
+                    </svg>
+                    Profil bearbeiten
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                      />
+                    </svg>
+                    Ausloggen
+                  </button>
                 </div>
-
-                {/* Erklärungen für falsche Antworten */}
-                {isAnswered && getIncorrectAnswerExplanations().length > 0 && (
-                  <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
-                    <h3 className="font-semibold text-orange-800 mb-2">Hinweise zu Ihren Antworten:</h3>
-                    <ul className="space-y-2">
-                      {getIncorrectAnswerExplanations().map((item, index) => (
-                        <li key={index} className="text-orange-700">
-                          {item.wasSelected ? (
-                            <span className="font-medium">Ihre Auswahl "{item.text}" ist nicht korrekt:</span>
-                          ) : (
-                            <span className="font-medium">Sie haben die korrekte Antwort "{item.text}" nicht ausgewählt.</span>
-                          )}
-                          {item.explanation && (
-                            <p className="mt-1 text-sm">{item.explanation}</p>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {!isAnswered ? (
-                  <button
-                    onClick={checkAnswers}
-                    className="mt-6 w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Antworten überprüfen
-                  </button>
-                ) : (
-                  <button
-                    onClick={nextQuestion}
-                    className="mt-6 w-full bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    Nächste Frage
-                  </button>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="bg-white rounded-lg shadow-lg p-6 text-center">
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                Keine Fragen verfügbar
-              </h2>
-              <p className="text-gray-600">
-                {settings.showOnlyWrongAnswers 
-                  ? 'Es gibt keine falsch beantworteten Fragen in dieser Kategorie.'
-                  : 'Es sind keine Fragen in dieser Kategorie verfügbar.'}
-              </p>
+              )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      </header>
 
-      {/* Right Sidebar */}
-      <div 
-        className={`fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity duration-300 lg:hidden ${
-          isRightSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={() => setIsRightSidebarOpen(false)}
-      />
-      <div
-        className={`fixed lg:static inset-y-0 right-0 w-80 bg-white transform transition-transform duration-300 ease-in-out z-50 lg:transform-none ${
-          isRightSidebarOpen ? 'translate-x-0' : 'translate-x-full'
-        } lg:translate-x-0`}
-      >
-        <RightSidebar
-          progress={progress}
-          settings={settings}
-          onUpdateSettings={setSettings}
-        />
-      </div>
+      {/* Hauptinhalt */}
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="px-4 py-6 sm:px-0">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {questionCatalogs.map((catalog) => (
+              <Link 
+                key={catalog.id} 
+                href={`/catalog/${catalog.id}`}
+                className="block group"
+              >
+                <div className="bg-white overflow-hidden shadow rounded-lg transition-all duration-200 hover:shadow-lg border border-gray-200 hover:border-blue-500">
+                  <div className="px-4 py-5 sm:p-6">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 bg-blue-50 rounded-md p-3">
+                        <svg 
+                          className="h-6 w-6 text-blue-600" 
+                          fill="none" 
+                          viewBox="0 0 24 24" 
+                          stroke="currentColor"
+                        >
+                          <path 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            strokeWidth={2} 
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" 
+                          />
+                        </svg>
+                      </div>
+                      <div className="ml-5">
+                        <h3 className="text-lg font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+                          {catalog.title}
+                        </h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Prüfungskatalog {catalog.year}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Katalog Details */}
+                    <div className="mt-4 border-t border-gray-100 pt-4">
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        <div className="text-sm">
+                          <dt className="text-gray-500">Module</dt>
+                          <dd className="mt-1 font-medium text-gray-900">
+                            {catalog.modules.length}
+                          </dd>
+                        </div>
+                        <div className="text-sm">
+                          <dt className="text-gray-500">Fragen</dt>
+                          <dd className="mt-1 font-medium text-gray-900">
+                            {catalog.modules.reduce((total, module) => 
+                              total + module.categories.reduce((catTotal, category) => 
+                                catTotal + category.questions.length, 0
+                              ), 0
+                            )}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      {/* Fortschrittsbalken */}
+                      {userProfile?.catalogs?.[catalog.id] && (
+                        <div className="mt-4">
+                          <div className="flex justify-between text-sm text-gray-500 mb-1">
+                            <span>Fortschritt</span>
+                            <span>
+                              {Math.round((userProfile.catalogs[catalog.id].correctAnswers / userProfile.catalogs[catalog.id].totalQuestions) * 100)}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-600 transition-all duration-300"
+                              style={{
+                                width: `${(userProfile.catalogs[catalog.id].correctAnswers / userProfile.catalogs[catalog.id].totalQuestions) * 100}%`
+                              }}
+                            />
+                          </div>
+                          <div className="mt-1 flex justify-between text-xs text-gray-500">
+                            <span>{userProfile.catalogs[catalog.id].correctAnswers} von {userProfile.catalogs[catalog.id].totalQuestions} Fragen richtig</span>
+                            <span>
+                              Zuletzt bearbeitet: {userProfile.catalogs[catalog.id].lastAttemptedAt.toDate().toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-50 px-4 py-4 sm:px-6">
+                    <div className="text-sm flex justify-between items-center">
+                      <span className="font-medium text-blue-600 hover:text-blue-500">
+                        Zum Katalog
+                      </span>
+                      <svg 
+                        className="h-5 w-5 text-blue-600 group-hover:translate-x-1 transition-transform" 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2} 
+                          d="M9 5l7 7-7 7" 
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </main>
     </div>
   )
 } 
