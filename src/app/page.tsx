@@ -190,19 +190,31 @@ export default function Dashboard() {
                           <div className="flex justify-between text-sm text-gray-500 mb-1">
                             <span>Fortschritt</span>
                             <span>
-                              {Math.round((userProfile.catalogs[catalog.id].correctAnswers / userProfile.catalogs[catalog.id].totalQuestions) * 100)}%
+                              {Math.round((userProfile.catalogs[catalog.id].totalQuestions / catalog.modules.reduce((total, module) => 
+                                total + module.categories.reduce((catTotal, category) => 
+                                  catTotal + category.questions.length, 0
+                                ), 0
+                              )) * 100)}%
                             </span>
                           </div>
                           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-blue-600 transition-all duration-300"
                               style={{
-                                width: `${(userProfile.catalogs[catalog.id].correctAnswers / userProfile.catalogs[catalog.id].totalQuestions) * 100}%`
+                                width: `${(userProfile.catalogs[catalog.id].totalQuestions / catalog.modules.reduce((total, module) => 
+                                  total + module.categories.reduce((catTotal, category) => 
+                                    catTotal + category.questions.length, 0
+                                  ), 0
+                                )) * 100}%`
                               }}
                             />
                           </div>
                           <div className="mt-1 flex justify-between text-xs text-gray-500">
-                            <span>{userProfile.catalogs[catalog.id].correctAnswers} von {userProfile.catalogs[catalog.id].totalQuestions} Fragen richtig</span>
+                            <span>{userProfile.catalogs[catalog.id].correctAnswers} von {catalog.modules.reduce((total, module) => 
+                              total + module.categories.reduce((catTotal, category) => 
+                                catTotal + category.questions.length, 0
+                              ), 0
+                            )} Fragen richtig</span>
                             <span>
                               Zuletzt bearbeitet: {userProfile.catalogs[catalog.id].lastAttemptedAt.toDate().toLocaleDateString()}
                             </span>

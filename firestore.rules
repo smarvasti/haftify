@@ -23,6 +23,25 @@ service cloud.firestore {
         data.attemptedAt is timestamp;
     }
 
+    // Validiert die Struktur eines Reset-Dokuments
+    function isValidReset() {
+      let data = request.resource.data;
+      return 
+        data.keys().hasAll(['answers', 'lastUpdated']) &&
+        data.answers is list &&
+        data.lastUpdated is timestamp;
+    }
+
+    // Validiert die Struktur eines Katalog-Updates
+    function isValidCatalogUpdate() {
+      let data = request.resource.data;
+      return 
+        data.keys().hasAll(['lastAttemptedAt', 'totalQuestions', 'correctAnswers']) &&
+        data.lastAttemptedAt is timestamp &&
+        data.totalQuestions is number &&
+        data.correctAnswers is number;
+    }
+
     // Regeln für die users-Sammlung
     match /users/{userId} {
       // Benutzer können nur ihr eigenes Profil lesen und schreiben
@@ -37,14 +56,12 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.email == resource.data.email;
 
-      // Regeln für die Katalog-Subkollektionen
+      // Erlaube vollen Zugriff auf die Katalog-Fortschritte
       match /catalogs/{catalogId} {
-        allow read: if isOwner(userId);
+        allow read, write: if isOwner(userId);
         
-        // Regeln für die Fortschritte innerhalb eines Katalogs
         match /progress/{progressId} {
-          allow read, write: if isOwner(userId);
-          allow create, update: if isOwner(userId) && isValidProgress();
+          allow read, write, delete: if isOwner(userId);
         }
       }
     }

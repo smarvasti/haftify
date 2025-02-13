@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { questionCatalogs } from '@/data/questions';
 import { QuestionProgress } from '@/types/questions';
 import { useAuth } from '@/contexts/AuthContext';
-import { Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, deleteDoc, collection, getDocs, query } from 'firebase/firestore';
+import { db } from '@/config/firebase';
 import Sidebar from '@/components/Sidebar';
 import RightSidebar from '@/components/RightSidebar';
 
@@ -26,10 +27,22 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
   const [isAnswered, setIsAnswered] = useState(false);
   const [progress, setProgress] = useState<QuestionProgress[]>([]);
   const [settings, setSettings] = useState({
-    showOnlyWrongAnswers: false
+    showOnlyWrongAnswers: false,
+    progressBarType: 'catalog' as 'catalog' | 'module' | 'category'
   });
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+  const [notification, setNotification] = useState<{
+    show: boolean;
+    moduleTitle: string;
+    totalQuestions: number;
+    wrongAnswers: number;
+  }>({
+    show: false,
+    moduleTitle: '',
+    totalQuestions: 0,
+    wrongAnswers: 0
+  });
 
   const { userProfile, saveProgress, loadCatalogProgress } = useAuth();
 
@@ -51,6 +64,22 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
       loadProgress();
     }
   }, [resolvedParams.id, userProfile, loadCatalogProgress]);
+
+  useEffect(() => {
+    if (userProfile && !userProfile.catalogs?.[resolvedParams.id]) {
+      // Initialisiere die Katalogstatistiken, wenn sie noch nicht existieren
+      const userRef = doc(db, 'users', userProfile.uid);
+      updateDoc(userRef, {
+        [`catalogs.${resolvedParams.id}`]: {
+          earnedPoints: 0,
+          totalPoints: 0,
+          correctAnswers: 0,
+          totalQuestions: 0,
+          lastAttemptedAt: Timestamp.now()
+        }
+      });
+    }
+  }, [userProfile, resolvedParams.id]);
 
   const handleSelectModule = (moduleId: string) => {
     const module = catalog.modules.find(m => m.id === moduleId)!;
@@ -91,50 +120,87 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
   };
 
   const checkAnswers = async () => {
-    const correctAnswers = currentQuestion.answers
-      .filter(a => a.isCorrect)
-      .map(a => a.text);
+    if (!currentQuestion || !userProfile) return;
 
-    const isCorrect = 
-      selectedAnswers.length === correctAnswers.length &&
-      selectedAnswers.every(a => correctAnswers.includes(a));
+    const isCorrect = selectedAnswers.length === currentQuestion.answers.filter(a => a.isCorrect).length &&
+      selectedAnswers.every(selected => 
+        currentQuestion.answers.find(a => a.text === selected)?.isCorrect
+      );
 
-    await saveProgress(resolvedParams.id, {
+    const newProgress = {
       questionId: currentQuestion.id,
       isCorrect,
       selectedAnswers,
       attemptedAt: Timestamp.now()
-    });
+    };
 
-    setProgress(prev => {
-      const existingProgress = prev.find(p => p.questionId === currentQuestion.id);
-      if (existingProgress) {
-        return prev.map(p => 
-          p.questionId === currentQuestion.id
-            ? { ...p, isCorrect, selectedAnswers }
-            : p
-        );
-      }
-      return [...prev, { questionId: currentQuestion.id, isCorrect, selectedAnswers }];
-    });
+    try {
+      await saveProgress(resolvedParams.id, newProgress);
+      
+      // Berechne die Gesamtpunktzahl für den Katalog
+      const allQuestions = catalog.modules.flatMap(m => 
+        m.categories.flatMap(c => c.questions)
+      );
+      const catalogProgress = await loadCatalogProgress(resolvedParams.id);
+      const earnedPoints = allQuestions.reduce((sum, q) => {
+        const questionProgress = catalogProgress[q.id];
+        return sum + (questionProgress?.isCorrect ? q.points : 0);
+      }, 0);
+      const totalPoints = allQuestions.reduce((sum, q) => sum + q.points, 0);
 
-    setIsAnswered(true);
+      // Aktualisiere die Statistiken in der Datenbank
+      const userRef = doc(db, 'users', userProfile.uid);
+      await updateDoc(userRef, {
+        [`catalogs.${resolvedParams.id}.earnedPoints`]: earnedPoints,
+        [`catalogs.${resolvedParams.id}.totalPoints`]: totalPoints,
+        [`catalogs.${resolvedParams.id}.correctAnswers`]: progress.filter(p => p.isCorrect).length + (isCorrect ? 1 : 0),
+        [`catalogs.${resolvedParams.id}.totalQuestions`]: progress.length + 1,
+        [`catalogs.${resolvedParams.id}.lastAttemptedAt`]: Timestamp.now()
+      });
+
+      setProgress(prev => [...prev.filter(p => p.questionId !== currentQuestion.id), {
+        questionId: currentQuestion.id,
+        isCorrect,
+        selectedAnswers
+      }]);
+      setIsAnswered(true);
+    } catch (error) {
+      console.error('Error saving progress:', error);
+    }
   };
 
   const nextQuestion = () => {
     setSelectedAnswers([]);
     setIsAnswered(false);
 
+    // Prüfe, ob das aktuelle Modul abgeschlossen ist
+    const isLastQuestionInCategory = currentQuestionIndex + 1 >= currentCategory.questions.length;
+    const isLastCategoryInModule = currentCategoryId === currentModule.categories[currentModule.categories.length - 1].id;
+
+    if (isLastQuestionInCategory && isLastCategoryInModule) {
+      // Berechne die Statistiken für das aktuelle Modul
+      const moduleQuestions = currentModule.categories.flatMap(c => c.questions);
+      const moduleProgress = progress.filter(p => 
+        moduleQuestions.some(q => q.id === p.questionId)
+      );
+      const wrongAnswers = moduleProgress.filter(p => !p.isCorrect).length;
+
+      // Zeige die Notification und bleibe beim aktuellen Modul
+      setNotification({
+        show: true,
+        moduleTitle: currentModule.title,
+        totalQuestions: moduleQuestions.length,
+        wrongAnswers
+      });
+      return; // Beende die Funktion hier, um nicht zum nächsten Modul zu wechseln
+    }
+
+    // Normale Navigation zur nächsten Frage innerhalb des Moduls
     if (currentQuestionIndex + 1 < currentCategory.questions.length) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else if (currentCategoryId !== currentModule.categories[currentModule.categories.length - 1].id) {
+    } else if (!isLastCategoryInModule) {
       const nextCategoryIndex = currentModule.categories.findIndex(c => c.id === currentCategoryId) + 1;
       setCurrentCategoryId(currentModule.categories[nextCategoryIndex].id);
-      setCurrentQuestionIndex(0);
-    } else if (currentModuleId !== catalog.modules[catalog.modules.length - 1].id) {
-      const nextModuleIndex = catalog.modules.findIndex(m => m.id === currentModuleId) + 1;
-      setCurrentModuleId(catalog.modules[nextModuleIndex].id);
-      setCurrentCategoryId(catalog.modules[nextModuleIndex].categories[0].id);
       setCurrentQuestionIndex(0);
     }
   };
@@ -149,7 +215,8 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
     const isCorrectAnswer = currentQuestion.answers.find(a => a.text === answer)?.isCorrect;
     const wasSelected = selectedAnswers.includes(answer);
 
-    if (isCorrectAnswer) return 'bg-green-100 border-green-500';
+    if (isCorrectAnswer && wasSelected) return 'bg-green-100 border-green-500';
+    if (isCorrectAnswer && !wasSelected) return 'bg-green-50 border-green-500 border-dashed';
     if (wasSelected && !isCorrectAnswer) return 'bg-red-100 border-red-500';
     return 'bg-white';
   };
@@ -157,17 +224,26 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
   const getIncorrectAnswerExplanations = () => {
     if (!isAnswered) return [];
     
-    return currentQuestion.answers
-      .filter(answer => {
-        const wasSelected = selectedAnswers.includes(answer.text);
-        return (wasSelected && !answer.isCorrect) || (!wasSelected && answer.isCorrect);
-      })
+    const incorrectSelections = currentQuestion.answers
+      .filter(answer => selectedAnswers.includes(answer.text) && !answer.isCorrect)
       .map(answer => ({
         text: answer.text,
         explanation: answer.explanation,
-        wasSelected: selectedAnswers.includes(answer.text)
-      }))
-      .filter(item => item.explanation || item.wasSelected);
+        wasSelected: true
+      }));
+
+    const missedCorrectAnswers = currentQuestion.answers
+      .filter(answer => !selectedAnswers.includes(answer.text) && answer.isCorrect)
+      .map(answer => answer.text);
+
+    return [
+      ...incorrectSelections,
+      ...(missedCorrectAnswers.length > 0 ? [{
+        text: missedCorrectAnswers.join('" und "'),
+        explanation: '',
+        wasSelected: false
+      }] : [])
+    ];
   };
 
   const getFilteredQuestions = () => {
@@ -183,6 +259,99 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
 
   const filteredQuestions = getFilteredQuestions();
   const currentQuestion = filteredQuestions[currentQuestionIndex];
+
+  // Sammle alle Fragen des aktuellen Katalogs
+  const allQuestions = catalog.modules.flatMap(m => 
+    m.categories.flatMap(c => c.questions)
+  );
+
+  const handleResetProgress = async () => {
+    try {
+      // Setze den lokalen Fortschritt zurück
+      setProgress([]);
+      
+      if (userProfile) {
+        // Lösche alle Dokumente in der progress-Collection
+        const progressCollectionRef = collection(db, 'users', userProfile.uid, 'catalogs', catalog.id, 'progress');
+        const progressQuery = query(progressCollectionRef);
+        const progressSnapshot = await getDocs(progressQuery);
+        
+        // Lösche jedes Dokument in der Collection
+        const deletePromises = progressSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+
+        // Aktualisiere die Katalog-Statistiken
+        const userRef = doc(db, 'users', userProfile.uid);
+        await updateDoc(userRef, {
+          [`catalogs.${catalog.id}`]: {
+            lastAttemptedAt: Timestamp.now(),
+            totalQuestions: 0,
+            correctAnswers: 0,
+            earnedPoints: 0,
+            totalPoints: 0
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Fehler beim Zurücksetzen des Fortschritts:', error);
+    }
+  };
+
+  // Neue Funktion zum Wiederholen des Moduls
+  const handleRepeatModule = () => {
+    // Finde das aktuelle Modul
+    const currentModule = catalog.modules.find(m => m.id === currentModuleId);
+    if (!currentModule) return;
+
+    // Setze die erste Frage des Moduls
+    const firstCategory = currentModule.categories[0];
+    const firstQuestion = firstCategory.questions[0];
+    
+    // Aktualisiere die Auswahl
+    setCurrentCategoryId(firstCategory.id);
+    setCurrentQuestionIndex(0);
+    setSelectedAnswers([]);
+    setIsAnswered(false);
+    setNotification({ show: false, moduleTitle: '', totalQuestions: 0, wrongAnswers: 0 });
+  };
+
+  // Neue Funktion zum Wechseln zum nächsten Modul
+  const handleNextModule = () => {
+    const currentModuleIndex = catalog.modules.findIndex(m => m.id === currentModuleId);
+    if (currentModuleIndex < catalog.modules.length - 1) {
+      const nextModule = catalog.modules[currentModuleIndex + 1];
+      setCurrentModuleId(nextModule.id);
+      setCurrentCategoryId(nextModule.categories[0].id);
+      setCurrentQuestionIndex(0);
+      setSelectedAnswers([]);
+      setIsAnswered(false);
+      setNotification({ show: false, moduleTitle: '', totalQuestions: 0, wrongAnswers: 0 });
+    }
+  };
+
+  // Neue Funktion zur Berechnung des Fortschritts
+  const calculateProgress = () => {
+    switch (settings.progressBarType) {
+      case 'catalog':
+        // Berechne den Gesamtfortschritt im Katalog
+        const allCatalogQuestions = catalog.modules.flatMap(m => 
+          m.categories.flatMap(c => c.questions)
+        );
+        const currentCatalogQuestionIndex = allCatalogQuestions.findIndex(q => q.id === currentQuestion?.id);
+        return ((currentCatalogQuestionIndex + 1) / allCatalogQuestions.length) * 100;
+
+      case 'module':
+        // Berechne den Fortschritt im aktuellen Modul
+        const allModuleQuestions = currentModule.categories.flatMap(c => c.questions);
+        const currentModuleQuestionIndex = allModuleQuestions.findIndex(q => q.id === currentQuestion?.id);
+        return ((currentModuleQuestionIndex + 1) / allModuleQuestions.length) * 100;
+
+      case 'category':
+      default:
+        // Berechne den Fortschritt in der aktuellen Kategorie (bisheriges Verhalten)
+        return ((currentQuestionIndex + 1) / filteredQuestions.length) * 100;
+    }
+  };
 
   return (
     <div className="flex h-screen bg-gray-100 relative">
@@ -226,6 +395,7 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
           currentCategoryId={currentCategoryId}
           currentQuestionId={currentQuestion?.id || ''}
           progress={progress}
+          settings={settings}
           onSelectCatalog={() => {}}
           onSelectModule={handleSelectModule}
           onSelectCategory={handleSelectCategory}
@@ -245,7 +415,7 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
               <div className="w-full bg-gray-200 rounded-full h-2.5 mb-6">
                 <div 
                   className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                  style={{ width: `${((currentQuestionIndex + 1) / filteredQuestions.length) * 100}%` }}
+                  style={{ width: `${calculateProgress()}%` }}
                 />
               </div>
 
@@ -298,12 +468,16 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
                       {getIncorrectAnswerExplanations().map((item, index) => (
                         <li key={index} className="text-orange-700">
                           {item.wasSelected ? (
-                            <span className="font-medium">Ihre Auswahl "{item.text}" ist nicht korrekt:</span>
+                            <>
+                              <span className="font-medium">Ihre Auswahl "{item.text}" ist nicht korrekt:</span>
+                              {item.explanation && (
+                                <p className="mt-1 text-sm">{item.explanation}</p>
+                              )}
+                            </>
                           ) : (
-                            <span className="font-medium">Sie haben die korrekte Antwort "{item.text}" nicht ausgewählt.</span>
-                          )}
-                          {item.explanation && (
-                            <p className="mt-1 text-sm">{item.explanation}</p>
+                            <span className="font-medium">
+                              {`Antwort "${item.text}" wäre${item.text.includes('" und "') ? 'n' : ''} ebenfalls korrekt gewesen.`}
+                            </span>
                           )}
                         </li>
                       ))}
@@ -326,6 +500,72 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
                     Nächste Frage
                   </button>
                 )}
+              </div>
+
+              {/* Bullet Point Pagination */}
+              <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 py-4 px-4">
+                <div className="max-w-4xl mx-auto">
+                  <div className="flex items-center justify-center gap-4">
+                    {currentModule.categories.map(category => {
+                      // Filtere die Fragen basierend auf den Einstellungen
+                      const categoryQuestions = settings.showOnlyWrongAnswers
+                        ? category.questions.filter(question => {
+                            const questionProgress = progress.find(p => p.questionId === question.id);
+                            return questionProgress && !questionProgress.isCorrect;
+                          })
+                        : category.questions;
+
+                      // Überspringe die Kategorie, wenn sie keine Fragen enthält
+                      if (categoryQuestions.length === 0) return null;
+
+                      return (
+                        <div key={category.id} className="flex items-center gap-3">
+                          {categoryQuestions.map((question, index) => {
+                            const questionProgress = progress.find(p => p.questionId === question.id);
+                            let bulletClass = 'w-2.5 h-2.5 rounded-full transition-colors';
+                            
+                            const isCurrentQuestion = currentCategoryId === category.id && 
+                              currentQuestion?.id === question.id;
+                            
+                            if (isCurrentQuestion) {
+                              bulletClass += ' bg-blue-600 ring-2 ring-blue-300 ring-offset-2';
+                            } else if (questionProgress?.isCorrect) {
+                              bulletClass += ' bg-green-500';
+                            } else if (questionProgress && !questionProgress.isCorrect) {
+                              bulletClass += ' bg-red-500';
+                            } else {
+                              bulletClass += ' bg-gray-300';
+                            }
+                            
+                            return (
+                              <button
+                                key={question.id}
+                                onClick={() => {
+                                  setCurrentCategoryId(category.id);
+                                  const newIndex = categoryQuestions.findIndex(q => q.id === question.id);
+                                  setCurrentQuestionIndex(newIndex);
+                                  setSelectedAnswers([]);
+                                  setIsAnswered(false);
+                                }}
+                                className={bulletClass}
+                                title={`Frage ${index + 1} von ${categoryQuestions.length} ${
+                                  questionProgress
+                                    ? questionProgress.isCorrect
+                                      ? '(Richtig beantwortet)'
+                                      : '(Falsch beantwortet)'
+                                    : '(Noch nicht beantwortet)'
+                                }`}
+                              />
+                            );
+                          })}
+                          {category.id !== currentModule.categories[currentModule.categories.length - 1].id && (
+                            <div className="w-px h-4 bg-gray-300 mx-4" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </>
           ) : (
@@ -357,10 +597,60 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
       >
         <RightSidebar
           progress={progress}
+          questions={allQuestions}
           settings={settings}
           onUpdateSettings={setSettings}
+          onResetProgress={handleResetProgress}
         />
       </div>
+
+      {/* Notification Modal */}
+      {notification.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm mx-4">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+                <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Modul abgeschlossen!
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                {notification.wrongAnswers === 0 ? (
+                  `Perfekt! Sie haben alle ${notification.totalQuestions} Fragen in "${notification.moduleTitle}" richtig beantwortet.`
+                ) : (
+                  `Sie haben ${notification.totalQuestions - notification.wrongAnswers} von ${notification.totalQuestions} Fragen in "${notification.moduleTitle}" richtig beantwortet.`
+                )}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRepeatModule}
+                  className="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Modul wiederholen
+                </button>
+                {currentModuleId !== catalog.modules[catalog.modules.length - 1].id ? (
+                  <button
+                    onClick={handleNextModule}
+                    className="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Weiter zum nächsten Modul
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setNotification({ show: false, moduleTitle: '', totalQuestions: 0, wrongAnswers: 0 })}
+                    className="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Schließen
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

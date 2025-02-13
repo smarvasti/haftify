@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Catalog, QuestionProgress } from '@/types/questions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import ProfileModal from './ProfileModal';
 import Link from 'next/link';
 
 interface SidebarProps {
@@ -12,10 +11,31 @@ interface SidebarProps {
   currentCategoryId: string;
   currentQuestionId: string;
   progress: QuestionProgress[];
+  settings: {
+    showOnlyWrongAnswers: boolean;
+    progressBarType: 'catalog' | 'module' | 'category';
+  };
   onSelectCatalog: (catalogId: string) => void;
   onSelectModule: (moduleId: string) => void;
   onSelectCategory: (categoryId: string) => void;
   onSelectQuestion: (questionId: string) => void;
+}
+
+interface Question {
+  id: string;
+  points: number;
+}
+
+interface Category {
+  id: string;
+  title: string;
+  questions: Question[];
+}
+
+interface Module {
+  id: string;
+  title: string;
+  categories: Category[];
 }
 
 export default function Sidebar({
@@ -25,15 +45,15 @@ export default function Sidebar({
   currentCategoryId,
   currentQuestionId,
   progress,
+  settings,
   onSelectCatalog,
   onSelectModule,
   onSelectCategory,
   onSelectQuestion,
 }: SidebarProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const { userProfile, logout } = useAuth();
   const router = useRouter();
+  const { userProfile, logout } = useAuth();
 
   const handleLogout = async () => {
     try {
@@ -55,6 +75,94 @@ export default function Sidebar({
     const attempted = categoryQuestions.filter(q => q).length;
     const correct = categoryQuestions.filter(q => q?.isCorrect).length;
     return { attempted, correct, total: questions.length };
+  };
+
+  const getModuleProgress = (module: { categories: { id: string, questions: { id: string }[] }[] }) => {
+    let totalQuestions = 0;
+    let answeredQuestions = 0;
+
+    module.categories.forEach(category => {
+      const categoryQuestions = category.questions.map(q => progress.find(p => p.questionId === q.id));
+      totalQuestions += category.questions.length;
+      answeredQuestions += categoryQuestions.filter(q => q).length;
+    });
+
+    const percentage = Math.round((answeredQuestions / totalQuestions) * 100);
+    return `${percentage}%`;
+  };
+
+  const getModuleDetailedProgress = (module: { categories: { id: string, questions: { id: string }[] }[] }) => {
+    let totalQuestions = 0;
+    let correctAnswers = 0;
+    let incorrectAnswers = 0;
+
+    module.categories.forEach(category => {
+      const categoryQuestions = category.questions.map(q => progress.find(p => p.questionId === q.id));
+      totalQuestions += category.questions.length;
+      correctAnswers += categoryQuestions.filter(q => q?.isCorrect).length;
+      incorrectAnswers += categoryQuestions.filter(q => q && !q.isCorrect).length;
+    });
+
+    const unanswered = totalQuestions - correctAnswers - incorrectAnswers;
+    
+    return {
+      total: totalQuestions,
+      correct: correctAnswers,
+      incorrect: incorrectAnswers,
+      unanswered: unanswered,
+      correctPercent: (correctAnswers / totalQuestions) * 100,
+      incorrectPercent: (incorrectAnswers / totalQuestions) * 100,
+      unansweredPercent: (unanswered / totalQuestions) * 100
+    };
+  };
+
+  // Neue Filterfunktionen
+  const hasIncorrectAnswers = (questionIds: string[]) => {
+    return questionIds.some(id => {
+      const questionProgress = progress.find(p => p.questionId === id);
+      return questionProgress && !questionProgress.isCorrect;
+    });
+  };
+
+  const filterQuestions = (questions: Question[]) => {
+    if (!settings.showOnlyWrongAnswers) return questions;
+    return questions.filter(question => {
+      const questionProgress = progress.find(p => p.questionId === question.id);
+      return questionProgress && !questionProgress.isCorrect;
+    });
+  };
+
+  const filterCategories = (categories: Category[]) => {
+    if (!settings.showOnlyWrongAnswers) return categories;
+    return categories.filter(category => hasIncorrectAnswers(category.questions.map(q => q.id)));
+  };
+
+  const filterModules = (modules: Module[]) => {
+    if (!settings.showOnlyWrongAnswers) return modules;
+    return modules.filter(module => 
+      module.categories.some(category => hasIncorrectAnswers(category.questions.map(q => q.id)))
+    );
+  };
+
+  const getHiddenQuestionsCount = () => {
+    if (!settings.showOnlyWrongAnswers) return 0;
+    
+    let hiddenCount = 0;
+    catalogs.forEach(catalog => {
+      if (catalog.id === currentCatalogId) {
+        catalog.modules.forEach(module => {
+          module.categories.forEach(category => {
+            category.questions.forEach(question => {
+              const questionProgress = progress.find(p => p.questionId === question.id);
+              if (!questionProgress || questionProgress.isCorrect) {
+                hiddenCount++;
+              }
+            });
+          });
+        });
+      }
+    });
+    return hiddenCount;
   };
 
   return (
@@ -106,12 +214,10 @@ export default function Sidebar({
             {/* Benutzermenü Dropdown */}
             {isUserMenuOpen && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                <button
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    setIsProfileModalOpen(true);
-                  }}
+                <Link
+                  href="/profile"
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  onClick={() => setIsUserMenuOpen(false)}
                 >
                   <svg
                     className="w-4 h-4"
@@ -127,7 +233,7 @@ export default function Sidebar({
                     />
                   </svg>
                   Profil bearbeiten
-                </button>
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
@@ -151,6 +257,15 @@ export default function Sidebar({
             )}
           </div>
         </div>
+
+        {/* Filter-Hinweis */}
+        {settings.showOnlyWrongAnswers && (
+          <div className="px-4 py-2 bg-yellow-50 border-y border-yellow-100">
+            <p className="text-sm text-yellow-800">
+              Es werden nur falsch beantwortete Fragen angezeigt - {getHiddenQuestionsCount()} unbeantwortete und korrekte Fragen ausgeblendet
+            </p>
+          </div>
+        )}
 
         {/* Navigation */}
         <div className="flex-1 p-4">
@@ -183,68 +298,122 @@ export default function Sidebar({
             {catalogs.map((catalog) => (
               catalog.id === currentCatalogId && (
                 <div key={catalog.id} className="space-y-2">
-                  <div className="ml-[18px] space-y-2 relative pr-4">
-                    {/* Vertikale Linie für Module */}
-                    <div className="absolute left-0 top-4 h-[calc(100%-1rem)] w-px bg-gray-200" />
-                    
-                    {catalog.modules.map((module) => (
-                      <div key={module.id} className="space-y-2 relative">
-                        {/* Horizontale Verbindungslinie */}
-                        <div className="absolute left-0 top-4 w-2 h-px bg-gray-200" />
-                        
+                  <div className="space-y-2 relative">
+                    {filterModules(catalog.modules).map((module) => (
+                      <div key={module.id} className="space-y-2 border-b border-gray-200 last:border-b-0 pb-4 mb-4 last:pb-0 last:mb-0">
                         <button
                           onClick={() => onSelectModule(module.id)}
-                          className={`w-full text-left p-2 rounded-lg transition-colors ml-4 ${
+                          className={`w-full text-left p-2 rounded-lg transition-colors ${
                             currentModuleId === module.id
                               ? 'bg-blue-50 text-blue-600'
                               : 'hover:bg-gray-50'
                           }`}
                         >
-                          {module.title}
+                          <div className="flex justify-between items-center">
+                            <span>{module.title}</span>
+                            <span className="text-xs text-gray-500">
+                              {getModuleProgress(module)}
+                            </span>
+                          </div>
+                          <div className="mt-2 h-1 w-full bg-gray-100 rounded-full overflow-hidden relative group">
+                            {(() => {
+                              const progress = getModuleDetailedProgress(module);
+                              return (
+                                <>
+                                  <div className="h-full flex">
+                                    <div 
+                                      className="h-full bg-green-500 transition-all duration-300 relative hover:opacity-80"
+                                      style={{ width: `${progress.correctPercent}%` }}
+                                    >
+                                      {progress.correct > 0 && (
+                                        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
+                                          <div className="bg-green-100 text-green-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
+                                            {progress.correct} richtig beantwortet
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div 
+                                      className="h-full bg-red-500 transition-all duration-300 relative hover:opacity-80"
+                                      style={{ width: `${progress.incorrectPercent}%` }}
+                                    >
+                                      {progress.incorrect > 0 && (
+                                        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
+                                          <div className="bg-red-100 text-red-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
+                                            {progress.incorrect} falsch beantwortet
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div 
+                                      className="h-full bg-gray-300 transition-all duration-300 relative hover:opacity-80"
+                                      style={{ width: `${progress.unansweredPercent}%` }}
+                                    >
+                                      {progress.unanswered > 0 && (
+                                        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
+                                          <div className="bg-gray-100 text-gray-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
+                                            {progress.unanswered} unbeantwortet
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
                         </button>
 
                         {currentModuleId === module.id && (
-                          <div className="ml-8 space-y-1 relative">
-                            {/* Vertikale Linie für Kategorien */}
-                            <div className="absolute left-0 top-4 h-[calc(100%-1rem)] w-px bg-gray-200" />
-                            
-                            {module.categories.map((category) => (
-                              <div key={category.id} className="space-y-1 relative">
-                                {/* Horizontale Verbindungslinie */}
-                                <div className="absolute left-0 top-4 w-2 h-px bg-gray-200" />
-                                
+                          <div className="ml-4 space-y-1">
+                            {filterCategories(module.categories).map((category) => (
+                              <div key={category.id} className="space-y-1">
                                 <button
                                   onClick={() => onSelectCategory(category.id)}
-                                  className={`w-full text-left p-2 text-sm rounded-lg transition-colors ml-4 ${
+                                  className={`w-full text-left p-2 text-sm rounded-lg transition-colors ${
                                     currentCategoryId === category.id
                                       ? 'bg-gray-100 text-blue-600'
                                       : 'hover:bg-gray-50'
                                   }`}
                                 >
-                                  <div className="flex justify-between items-center">
-                                    <span>{category.title}</span>
-                                    <span className="text-xs text-gray-500">
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between items-center">
+                                      <span>{category.title}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-[10px]">
+                                      <span className="text-gray-400">
+                                        {category.questions.length} {category.questions.length === 1 ? 'Frage' : 'Fragen'}
+                                      </span>
                                       {(() => {
                                         const { attempted, correct, total } = getCategoryProgress(category.id, category.questions);
-                                        return `${correct}/${total}`;
+                                        const incorrect = attempted - correct;
+                                        if (correct === total && total > 0) {
+                                          return (
+                                            <span className="text-green-500">
+                                              Alle korrekt beantwortet
+                                            </span>
+                                          );
+                                        }
+                                        if (incorrect > 0) {
+                                          return (
+                                            <span className="text-red-400">
+                                              {incorrect} falsch beantwortet
+                                            </span>
+                                          );
+                                        }
+                                        return null;
                                       })()}
-                                    </span>
+                                    </div>
                                   </div>
                                 </button>
 
                                 {currentCategoryId === category.id && (
-                                  <div className="ml-8 space-y-1 relative">
-                                    {/* Vertikale Linie für Fragen */}
-                                    <div className="absolute left-0 top-4 h-[calc(100%-1rem)] w-px bg-gray-200" />
-                                    
-                                    {category.questions.map((question, index, array) => (
-                                      <div key={question.id} className="relative">
-                                        {/* Horizontale Verbindungslinie */}
-                                        <div className="absolute left-0 top-4 w-2 h-px bg-gray-200" />
-                                        
+                                  <div className="ml-4 space-y-1">
+                                    {filterQuestions(category.questions).map((question) => (
+                                      <div key={question.id}>
                                         <button
                                           onClick={() => onSelectQuestion(question.id)}
-                                          className={`w-full text-left p-2 text-sm rounded-lg transition-colors ml-4 flex items-center gap-2 ${
+                                          className={`w-full text-left p-2 text-sm rounded-lg transition-colors flex items-center gap-2 ${
                                             currentQuestionId === question.id
                                               ? 'bg-gray-50 text-blue-600'
                                               : 'hover:bg-gray-50'
@@ -279,14 +448,6 @@ export default function Sidebar({
           </div>
         </div>
       </div>
-
-      <ProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => {
-          setIsProfileModalOpen(false);
-          setIsUserMenuOpen(false);
-        }}
-      />
     </>
   );
 } 

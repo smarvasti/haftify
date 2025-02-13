@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
     const progressSnapshot = await getDocs(catalogProgressQuery);
     
-    const totalQuestions = progressSnapshot.size;
+    const totalAnsweredQuestions = progressSnapshot.size;
     const correctAnswers = progressSnapshot.docs.filter(
       doc => doc.data().isCorrect
     ).length;
@@ -120,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       catalogs: {
         [catalogId]: {
           lastAttemptedAt: serverTimestamp(),
-          totalQuestions,
+          totalQuestions: totalAnsweredQuestions,
           correctAnswers
         }
       }
@@ -134,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...userProfile.catalogs,
           [catalogId]: {
             lastAttemptedAt: Timestamp.now(),
-            totalQuestions,
+            totalQuestions: totalAnsweredQuestions,
             correctAnswers
           }
         }
