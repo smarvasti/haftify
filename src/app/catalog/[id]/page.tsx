@@ -44,10 +44,30 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
     wrongAnswers: 0
   });
 
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const { userProfile, saveProgress, loadCatalogProgress } = useAuth();
 
   const currentModule = catalog.modules.find(m => m.id === currentModuleId)!;
   const currentCategory = currentModule.categories.find(c => c.id === currentCategoryId)!;
+
+  // Funktion zum Finden der nächsten unbeantworteten Frage
+  const findNextUnansweredQuestion = (progress: QuestionProgress[]) => {
+    for (const module of catalog.modules) {
+      for (const category of module.categories) {
+        for (const question of category.questions) {
+          const questionProgress = progress.find(p => p.questionId === question.id);
+          if (!questionProgress) {
+            return {
+              moduleId: module.id,
+              categoryId: category.id,
+              questionIndex: category.questions.findIndex(q => q.id === question.id)
+            };
+          }
+        }
+      }
+    }
+    return null;
+  };
 
   useEffect(() => {
     async function loadProgress() {
@@ -58,12 +78,24 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
         selectedAnswers: p.selectedAnswers
       }));
       setProgress(formattedProgress);
+
+      // Prüfe, ob wir vom Dashboard kommen und es der erste Load ist
+      const hasNoParams = window.location.search === '';
+      if (hasNoParams && isInitialLoad) {
+        const nextQuestion = findNextUnansweredQuestion(formattedProgress);
+        if (nextQuestion) {
+          setCurrentModuleId(nextQuestion.moduleId);
+          setCurrentCategoryId(nextQuestion.categoryId);
+          setCurrentQuestionIndex(nextQuestion.questionIndex);
+        }
+        setIsInitialLoad(false);
+      }
     }
 
     if (userProfile) {
       loadProgress();
     }
-  }, [resolvedParams.id, userProfile, loadCatalogProgress]);
+  }, [resolvedParams.id, userProfile, loadCatalogProgress, isInitialLoad]);
 
   useEffect(() => {
     if (userProfile && !userProfile.catalogs?.[resolvedParams.id]) {
@@ -609,10 +641,18 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-sm mx-4">
             <div className="text-center">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
-                <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+              <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full ${
+                notification.wrongAnswers === 0 ? 'bg-green-100' : 'bg-amber-100'
+              } mb-4`}>
+                {notification.wrongAnswers === 0 ? (
+                  <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                )}
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
                 Modul abgeschlossen!
