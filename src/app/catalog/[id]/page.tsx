@@ -44,11 +44,29 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
     wrongAnswers: 0
   });
 
+  const [catalogCompletion, setCatalogCompletion] = useState<{
+    isVisible: boolean;
+    totalQuestions: number;
+    correctAnswers: number;
+    wrongAnswers: number;
+    earnedPoints: number;
+    totalPoints: number;
+    completionTime: number;
+  } | null>(null);
+
+  const [repeatOptions, setRepeatOptions] = useState<{
+    isVisible: boolean;
+    mode?: 'reset' | 'restart' | 'wrongOnly';
+  } | null>(null);
+
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const { userProfile, saveProgress, loadCatalogProgress } = useAuth();
 
   const currentModule = catalog.modules.find(m => m.id === currentModuleId)!;
   const currentCategory = currentModule.categories.find(c => c.id === currentCategoryId)!;
+
+  const [time, setTime] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
 
   // Funktion zum Finden der nächsten unbeantworteten Frage
   const findNextUnansweredQuestion = (progress: QuestionProgress[]) => {
@@ -130,15 +148,20 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
   };
 
   const handleSelectQuestion = (questionId: string) => {
-    const category = currentModule.categories.find(c => 
-      c.questions.some(q => q.id === questionId)
-    )!;
-    const questionIndex = category.questions.findIndex(q => q.id === questionId);
-    
-    setCurrentCategoryId(category.id);
-    setCurrentQuestionIndex(questionIndex);
-    setSelectedAnswers([]);
-    setIsAnswered(false);
+    // Suche zuerst das richtige Modul und die richtige Kategorie
+    for (const module of catalog.modules) {
+      for (const category of module.categories) {
+        const questionIndex = category.questions.findIndex(q => q.id === questionId);
+        if (questionIndex !== -1) {
+          setCurrentModuleId(module.id);
+          setCurrentCategoryId(category.id);
+          setCurrentQuestionIndex(questionIndex);
+          setSelectedAnswers([]);
+          setIsAnswered(false);
+          return;
+        }
+      }
+    }
   };
 
   const handleAnswerSelect = (answer: string) => {
@@ -196,6 +219,9 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
         selectedAnswers
       }]);
       setIsAnswered(true);
+
+      // Aktualisiere den Fortschritt und prüfe auf Katalog-Abschluss
+      handleProgressUpdate(currentQuestion.id, isCorrect);
     } catch (error) {
       console.error('Error saving progress:', error);
     }
@@ -205,10 +231,142 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
     setSelectedAnswers([]);
     setIsAnswered(false);
 
-    // Prüfe, ob das aktuelle Modul abgeschlossen ist
+    // Wenn der Filter für falsche Antworten aktiv ist
+    if (settings.showOnlyWrongAnswers) {
+      // Hole alle falsch beantworteten Fragen der aktuellen Kategorie
+      const wrongQuestions = currentCategory.questions.filter(question => {
+        const questionProgress = progress.find(p => p.questionId === question.id);
+        return questionProgress && !questionProgress.isCorrect;
+      });
+
+      // Finde den Index der aktuellen Frage in den gefilterten Fragen
+      const currentWrongIndex = wrongQuestions.findIndex(q => q.id === currentQuestion?.id);
+
+      // Wenn es eine nächste falsche Frage in der aktuellen Kategorie gibt
+      if (currentWrongIndex < wrongQuestions.length - 1) {
+        const nextWrongQuestion = wrongQuestions[currentWrongIndex + 1];
+        const nextIndex = currentCategory.questions.findIndex(q => q.id === nextWrongQuestion.id);
+        setCurrentQuestionIndex(nextIndex);
+        return;
+      }
+
+      // Suche in den nächsten Kategorien des aktuellen Moduls
+      const currentCategoryIndex = currentModule.categories.findIndex(c => c.id === currentCategoryId);
+      for (let i = currentCategoryIndex + 1; i < currentModule.categories.length; i++) {
+        const category = currentModule.categories[i];
+        const firstWrongQuestion = category.questions.find(question => {
+          const questionProgress = progress.find(p => p.questionId === question.id);
+          return questionProgress && !questionProgress.isCorrect;
+        });
+        
+        if (firstWrongQuestion) {
+          setCurrentCategoryId(category.id);
+          const questionIndex = category.questions.findIndex(q => q.id === firstWrongQuestion.id);
+          setCurrentQuestionIndex(questionIndex);
+          return;
+        }
+      }
+
+      // Suche in den nächsten Modulen
+      const currentModuleIndex = catalog.modules.findIndex(m => m.id === currentModuleId);
+      for (let i = currentModuleIndex + 1; i < catalog.modules.length; i++) {
+        const module = catalog.modules[i];
+        for (const category of module.categories) {
+          const firstWrongQuestion = category.questions.find(question => {
+            const questionProgress = progress.find(p => p.questionId === question.id);
+            return questionProgress && !questionProgress.isCorrect;
+          });
+          
+          if (firstWrongQuestion) {
+            setCurrentModuleId(module.id);
+            setCurrentCategoryId(category.id);
+            const questionIndex = category.questions.findIndex(q => q.id === firstWrongQuestion.id);
+            setCurrentQuestionIndex(questionIndex);
+            return;
+          }
+        }
+      }
+
+      // Wenn keine weiteren falschen Fragen gefunden wurden, starte von vorne
+      for (const module of catalog.modules) {
+        for (const category of module.categories) {
+          const firstWrongQuestion = category.questions.find(question => {
+            const questionProgress = progress.find(p => p.questionId === question.id);
+            return questionProgress && !questionProgress.isCorrect;
+          });
+          
+          if (firstWrongQuestion) {
+            setCurrentModuleId(module.id);
+            setCurrentCategoryId(category.id);
+            const questionIndex = category.questions.findIndex(q => q.id === firstWrongQuestion.id);
+            setCurrentQuestionIndex(questionIndex);
+            return;
+          }
+        }
+      }
+
+      return; // Keine falschen Fragen mehr gefunden
+    }
+
+    // Normale Navigation wenn der Filter nicht aktiv ist
+    // Prüfe, ob der gesamte Katalog abgeschlossen ist
     const isLastQuestionInCategory = currentQuestionIndex + 1 >= currentCategory.questions.length;
     const isLastCategoryInModule = currentCategoryId === currentModule.categories[currentModule.categories.length - 1].id;
+    const isLastModule = currentModuleId === catalog.modules[catalog.modules.length - 1].id;
+    const isLastQuestion = isLastQuestionInCategory && isLastCategoryInModule && isLastModule;
 
+    // Prüfe, ob alle Fragen beantwortet wurden
+    const allQuestionsAnswered = allQuestions.every(q => 
+      progress.some(p => p.questionId === q.id)
+    );
+
+    if (isLastQuestion) {
+      if (allQuestionsAnswered) {
+        // Berechne die Gesamtstatistik für den Katalog
+        const totalQuestions = allQuestions.length;
+        const correctAnswers = progress.filter(p => p.isCorrect).length;
+        const wrongAnswers = progress.filter(p => !p.isCorrect).length;
+        const earnedPoints = allQuestions.reduce((sum, q) => {
+          const questionProgress = progress.find(p => p.questionId === q.id);
+          return sum + (questionProgress?.isCorrect ? q.points : 0);
+        }, 0);
+        const totalPoints = allQuestions.reduce((sum, q) => sum + q.points, 0);
+
+        // Stoppe den Timer, falls er läuft
+        if (isRightSidebarOpen) {
+          const rightSidebar = document.querySelector('[data-testid="right-sidebar"]') as HTMLElement;
+          if (rightSidebar) {
+            const pauseButton = rightSidebar.querySelector('[data-testid="pause-timer"]') as HTMLElement;
+            if (pauseButton) {
+              pauseButton.click();
+            }
+          }
+        }
+
+        // Zeige das Abschluss-Overlay
+        setCatalogCompletion({
+          isVisible: true,
+          totalQuestions,
+          correctAnswers,
+          wrongAnswers,
+          earnedPoints,
+          totalPoints,
+          completionTime: time
+        });
+        return;
+      } else {
+        // Suche die erste unbeantwortete Frage
+        const nextUnanswered = findNextUnansweredQuestion(progress);
+        if (nextUnanswered) {
+          setCurrentModuleId(nextUnanswered.moduleId);
+          setCurrentCategoryId(nextUnanswered.categoryId);
+          setCurrentQuestionIndex(nextUnanswered.questionIndex);
+          return;
+        }
+      }
+    }
+
+    // Prüfe, ob das aktuelle Modul abgeschlossen ist
     if (isLastQuestionInCategory && isLastCategoryInModule) {
       // Berechne die Statistiken für das aktuelle Modul
       const moduleQuestions = currentModule.categories.flatMap(c => c.questions);
@@ -224,7 +382,7 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
         totalQuestions: moduleQuestions.length,
         wrongAnswers
       });
-      return; // Beende die Funktion hier, um nicht zum nächsten Modul zu wechseln
+      return;
     }
 
     // Normale Navigation zur nächsten Frage innerhalb des Moduls
@@ -283,9 +441,10 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
       return currentCategory.questions;
     }
     
+    const currentQuestionId = currentCategory.questions[currentQuestionIndex]?.id;
     return currentCategory.questions.filter(question => {
       const questionProgress = progress.find(p => p.questionId === question.id);
-      return questionProgress && !questionProgress.isCorrect;
+      return question.id === currentQuestionId || (questionProgress && !questionProgress.isCorrect);
     });
   };
 
@@ -329,22 +488,67 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
     }
   };
 
-  // Neue Funktion zum Wiederholen des Moduls
-  const handleRepeatModule = () => {
-    // Finde das aktuelle Modul
-    const currentModule = catalog.modules.find(m => m.id === currentModuleId);
-    if (!currentModule) return;
+  const handleRepeatCatalog = () => {
+    if (catalogCompletion) {
+      setCatalogCompletion({
+        ...catalogCompletion,
+        isVisible: false
+      });
+    }
+    setRepeatOptions({ isVisible: true });
+  };
 
-    // Setze die erste Frage des Moduls
-    const firstCategory = currentModule.categories[0];
-    const firstQuestion = firstCategory.questions[0];
-    
-    // Aktualisiere die Auswahl
-    setCurrentCategoryId(firstCategory.id);
-    setCurrentQuestionIndex(0);
+  const handleRepeatOptionSelect = async (mode: 'reset' | 'restart' | 'wrongOnly') => {
+    setRepeatOptions(null);
     setSelectedAnswers([]);
     setIsAnswered(false);
-    setNotification({ show: false, moduleTitle: '', totalQuestions: 0, wrongAnswers: 0 });
+
+    if (mode === 'reset') {
+        await handleResetProgress();
+        // Deaktiviere den Filter für falsche Antworten
+        setSettings({
+            ...settings,
+            showOnlyWrongAnswers: false
+        });
+        setCurrentModuleId(catalog.modules[0].id);
+        setCurrentCategoryId(catalog.modules[0].categories[0].id);
+        setCurrentQuestionIndex(0);
+    } else if (mode === 'restart') {
+        setCurrentModuleId(catalog.modules[0].id);
+        setCurrentCategoryId(catalog.modules[0].categories[0].id);
+        setCurrentQuestionIndex(0);
+    } else if (mode === 'wrongOnly') {
+        // Aktiviere den Filter für falsche Antworten
+        setSettings({
+            ...settings,
+            showOnlyWrongAnswers: true
+        });
+
+        // Finde die erste falsch beantwortete Frage
+        for (const module of catalog.modules) {
+            let foundWrong = false;
+            for (const category of module.categories) {
+                for (let i = 0; i < category.questions.length; i++) {
+                    const questionProgress = progress.find(p => p.questionId === category.questions[i].id);
+                    if (questionProgress && !questionProgress.isCorrect) {
+                        setCurrentModuleId(module.id);
+                        setCurrentCategoryId(category.id);
+                        // Finde den korrekten Index in den gefilterten Fragen
+                        const wrongQuestionsInCategory = category.questions.filter((q, index) => {
+                            const qProgress = progress.find(p => p.questionId === q.id);
+                            return qProgress && !qProgress.isCorrect;
+                        });
+                        const questionIndex = wrongQuestionsInCategory.findIndex(q => q.id === category.questions[i].id);
+                        setCurrentQuestionIndex(questionIndex);
+                        foundWrong = true;
+                        break;
+                    }
+                }
+                if (foundWrong) break;
+            }
+            if (foundWrong) break;
+        }
+    }
   };
 
   // Neue Funktion zum Wechseln zum nächsten Modul
@@ -383,6 +587,69 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
         // Berechne den Fortschritt in der aktuellen Kategorie (bisheriges Verhalten)
         return ((currentQuestionIndex + 1) / filteredQuestions.length) * 100;
     }
+  };
+
+  const handleProgressUpdate = async (questionId: string, isCorrect: boolean) => {
+    if (!currentQuestion) return;
+
+    // Speichere den Fortschritt
+    const newProgress = {
+      questionId,
+      isCorrect,
+      selectedAnswers,
+      attemptedAt: Timestamp.now()
+    };
+
+    await saveProgress(resolvedParams.id, newProgress);
+
+    // Aktualisiere den lokalen Fortschritt
+    const updatedProgress = [...progress, newProgress];
+    setProgress(updatedProgress);
+
+    // Berechne die Statistiken
+    const totalQuestions = allQuestions.length;
+    const answeredQuestions = updatedProgress.length;
+    const correctAnswers = updatedProgress.filter(p => p.isCorrect).length;
+    const isFirstCompletion = answeredQuestions === totalQuestions && progress.length < totalQuestions;
+    const allQuestionsCorrect = correctAnswers === totalQuestions;
+    const isLastQuestion = currentQuestionIndex === allQuestions.length - 1;
+
+    // Zeige den Abschluss-Dialog in folgenden Fällen:
+    // 1. Erstes Mal 100% Beantwortung
+    // 2. Letzte Frage beantwortet
+    // 3. Alle Fragen richtig beantwortet
+    if (isFirstCompletion || isLastQuestion || allQuestionsCorrect) {
+      const earnedPoints = updatedProgress
+        .filter(p => p.isCorrect)
+        .reduce((sum, p) => {
+          const question = allQuestions.find(q => q.id === p.questionId);
+          return sum + (question?.points || 0);
+        }, 0);
+
+      const totalPoints = allQuestions.reduce((sum, q) => sum + q.points, 0);
+
+      setCatalogCompletion({
+        isVisible: true,
+        totalQuestions,
+        correctAnswers,
+        wrongAnswers: answeredQuestions - correctAnswers,
+        earnedPoints,
+        totalPoints,
+        completionTime: time
+      });
+
+      // Stoppe den Timer
+      if (isTimerRunning) {
+        setIsTimerRunning(false);
+      }
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -633,6 +900,11 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
           settings={settings}
           onUpdateSettings={setSettings}
           onResetProgress={handleResetProgress}
+          time={time}
+          onTimeUpdate={setTime}
+          isTimerRunning={isTimerRunning}
+          onTimerRunningChange={setIsTimerRunning}
+          onSelectQuestion={handleSelectQuestion}
         />
       </div>
 
@@ -666,7 +938,7 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
               </p>
               <div className="flex gap-3">
                 <button
-                  onClick={handleRepeatModule}
+                  onClick={handleRepeatCatalog}
                   className="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Modul wiederholen
@@ -688,6 +960,172 @@ export default function CatalogPage({ params }: { params: Promise<{ id: string }
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Katalog-Abschluss-Overlay */}
+      {catalogCompletion && catalogCompletion.isVisible && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+            <div className="text-center mb-8">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                <svg className="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                Herzlichen Glückwunsch!
+              </h2>
+              <p className="text-lg text-gray-600">
+                Sie haben den Katalog "{catalog.title}" erfolgreich abgeschlossen.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {/* Statistiken */}
+              <div className="space-y-4">
+                <h3 className="font-medium text-gray-900">Ihre Ergebnisse</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Richtige Antworten:</span>
+                    <span className="font-medium">{catalogCompletion.correctAnswers} von {catalogCompletion.totalQuestions}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Falsche Antworten:</span>
+                    <span className="font-medium">{catalogCompletion.wrongAnswers}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Erreichte Punkte:</span>
+                    <span className="font-medium">{catalogCompletion.earnedPoints} von {catalogCompletion.totalPoints}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Erfolgsquote:</span>
+                    <span className="font-medium">
+                      {Math.round((catalogCompletion.correctAnswers / catalogCompletion.totalQuestions) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Zeit und Empfehlungen */}
+              <div className="space-y-4">
+                <h3 className="font-medium text-gray-900">Zeit und Empfehlungen</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Benötigte Zeit:</span>
+                    <span className="font-medium">{formatTime(catalogCompletion.completionTime)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Ø Zeit pro Frage:</span>
+                    <span className="font-medium">
+                      {formatTime(Math.round(catalogCompletion.completionTime / catalogCompletion.totalQuestions))}
+                    </span>
+                  </div>
+                </div>
+
+                {catalogCompletion.wrongAnswers > 0 && (
+                  <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                    <p className="text-amber-800 text-sm">
+                      Tipp: Sie haben {catalogCompletion.wrongAnswers} Fragen falsch beantwortet. 
+                      Nutzen Sie den Filter für falsche Antworten, um diese gezielt zu wiederholen.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  if (catalogCompletion) {
+                    setCatalogCompletion({
+                      ...catalogCompletion,
+                      isVisible: false
+                    });
+                  }
+                  router.push('/');
+                }}
+                className="flex-1 py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Zurück zur Übersicht
+              </button>
+              <button
+                onClick={handleRepeatCatalog}
+                className="flex-1 py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Katalog wiederholen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wiederholungsoptionen Modal */}
+      {repeatOptions?.isVisible && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+            <h2 className="text-2xl font-bold mb-6">Wie möchten Sie fortfahren?</h2>
+            
+            <div className="space-y-4">
+              <button
+                onClick={() => handleRepeatOptionSelect('restart')}
+                className="w-full p-4 text-left border rounded-lg hover:bg-gray-50 transition-colors group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2 rounded-full bg-blue-100 text-blue-600 group-hover:bg-blue-200">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">Von vorne starten</h3>
+                    <p className="text-sm text-gray-500">Behalten Sie Ihren Fortschritt und starten Sie von der ersten Frage</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleRepeatOptionSelect('wrongOnly')}
+                className="w-full p-4 text-left border rounded-lg hover:bg-gray-50 transition-colors group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2 rounded-full bg-amber-100 text-amber-600 group-hover:bg-amber-200">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">Falsche Antworten wiederholen</h3>
+                    <p className="text-sm text-gray-500">Üben Sie nur die Fragen, die Sie falsch beantwortet haben</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleRepeatOptionSelect('reset')}
+                className="w-full p-4 text-left border rounded-lg hover:bg-gray-50 transition-colors group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2 rounded-full bg-red-100 text-red-600 group-hover:bg-red-200">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900">Fortschritt zurücksetzen</h3>
+                    <p className="text-sm text-gray-500">Löschen Sie Ihren Fortschritt und starten Sie komplett neu</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setRepeatOptions(null)}
+              className="mt-6 w-full py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Abbrechen
+            </button>
           </div>
         </div>
       )}

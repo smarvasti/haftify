@@ -167,9 +167,9 @@ export default function Sidebar({
 
   return (
     <>
-      <div className="w-80 bg-white h-screen shadow-lg overflow-y-auto flex flex-col">
-        {/* Benutzer-Profil */}
-        <div className="p-4 border-b border-gray-200">
+      <div className="w-80 bg-white h-screen shadow-lg flex flex-col">
+        {/* Benutzer-Profil - Fixiert */}
+        <div className="flex-shrink-0 p-4 border-b border-gray-200">
           <div className="relative">
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -258,193 +258,196 @@ export default function Sidebar({
           </div>
         </div>
 
-        {/* Filter-Hinweis */}
-        {settings.showOnlyWrongAnswers && (
-          <div className="px-4 py-2 bg-yellow-50 border-y border-yellow-100">
-            <p className="text-sm text-yellow-800">
-              Es werden nur falsch beantwortete Fragen angezeigt - {getHiddenQuestionsCount()} unbeantwortete und korrekte Fragen ausgeblendet
-            </p>
-          </div>
-        )}
+        {/* Scrollbarer Bereich */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Filter-Hinweis */}
+          {settings.showOnlyWrongAnswers && (
+            <div className="px-4 py-2 bg-yellow-50 border-y border-yellow-100">
+              <p className="text-sm text-yellow-800">
+                Es werden nur falsch beantwortete Fragen angezeigt - {getHiddenQuestionsCount()} unbeantwortete und korrekte Fragen ausgeblendet
+              </p>
+            </div>
+          )}
 
-        {/* Navigation */}
-        <div className="flex-1 p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Link
-              href="/"
-              className="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+          {/* Navigation */}
+          <div className="flex-1 p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Link
+                href="/"
+                className="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
-              </svg>
-              <span className="ml-1">Zurück zur Übersicht</span>
-            </Link>
-          </div>
-          <h2 className="text-lg font-semibold mb-4">
-            {catalogs.find(c => c.id === currentCatalogId)?.title || 'Prüfungskatalog'}
-          </h2>
-          
-          <div className="space-y-4">
-            {catalogs.map((catalog) => (
-              catalog.id === currentCatalogId && (
-                <div key={catalog.id} className="space-y-2">
-                  <div className="space-y-2 relative">
-                    {filterModules(catalog.modules).map((module) => (
-                      <div key={module.id} className="space-y-2 border-b border-gray-200 last:border-b-0 pb-4 mb-4 last:pb-0 last:mb-0">
-                        <button
-                          onClick={() => onSelectModule(module.id)}
-                          className={`w-full text-left p-2 rounded-lg transition-colors ${
-                            currentModuleId === module.id
-                              ? 'bg-blue-50 text-blue-600'
-                              : 'hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex justify-between items-center">
-                            <span>{module.title}</span>
-                            <span className="text-xs text-gray-500">
-                              {getModuleProgress(module)}
-                            </span>
-                          </div>
-                          <div className="mt-2 h-1 w-full bg-gray-100 rounded-full overflow-hidden relative group">
-                            {(() => {
-                              const progress = getModuleDetailedProgress(module);
-                              return (
-                                <>
-                                  <div className="h-full flex">
-                                    <div 
-                                      className="h-full bg-green-500 transition-all duration-300 relative hover:opacity-80"
-                                      style={{ width: `${progress.correctPercent}%` }}
-                                    >
-                                      {progress.correct > 0 && (
-                                        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
-                                          <div className="bg-green-100 text-green-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
-                                            {progress.correct} richtig beantwortet
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                  />
+                </svg>
+                <span className="ml-1">Zurück zur Übersicht</span>
+              </Link>
+            </div>
+            <h2 className="text-lg font-semibold mb-4">
+              {catalogs.find(c => c.id === currentCatalogId)?.title || 'Prüfungskatalog'}
+            </h2>
+            
+            <div className="space-y-4">
+              {catalogs.map((catalog) => (
+                catalog.id === currentCatalogId && (
+                  <div key={catalog.id} className="space-y-2">
+                    <div className="space-y-2 relative">
+                      {filterModules(catalog.modules).map((module) => (
+                        <div key={module.id} className="space-y-2 border-b border-gray-200 last:border-b-0 pb-4 mb-4 last:pb-0 last:mb-0">
+                          <button
+                            onClick={() => onSelectModule(module.id)}
+                            className={`w-full text-left p-2 rounded-lg transition-colors ${
+                              currentModuleId === module.id
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <span>{module.title}</span>
+                              <span className="text-xs text-gray-500">
+                                {getModuleProgress(module)}
+                              </span>
+                            </div>
+                            <div className="mt-2 h-1 w-full bg-gray-100 rounded-full overflow-hidden relative group">
+                              {(() => {
+                                const progress = getModuleDetailedProgress(module);
+                                return (
+                                  <>
+                                    <div className="h-full flex">
+                                      <div 
+                                        className="h-full bg-green-500 transition-all duration-300 relative hover:opacity-80"
+                                        style={{ width: `${progress.correctPercent}%` }}
+                                      >
+                                        {progress.correct > 0 && (
+                                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
+                                            <div className="bg-green-100 text-green-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
+                                              {progress.correct} richtig beantwortet
+                                            </div>
                                           </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div 
-                                      className="h-full bg-red-500 transition-all duration-300 relative hover:opacity-80"
-                                      style={{ width: `${progress.incorrectPercent}%` }}
-                                    >
-                                      {progress.incorrect > 0 && (
-                                        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
-                                          <div className="bg-red-100 text-red-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
-                                            {progress.incorrect} falsch beantwortet
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div 
-                                      className="h-full bg-gray-300 transition-all duration-300 relative hover:opacity-80"
-                                      style={{ width: `${progress.unansweredPercent}%` }}
-                                    >
-                                      {progress.unanswered > 0 && (
-                                        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
-                                          <div className="bg-gray-100 text-gray-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
-                                            {progress.unanswered} unbeantwortet
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </>
-                              );
-                            })()}
-                          </div>
-                        </button>
-
-                        {currentModuleId === module.id && (
-                          <div className="ml-4 space-y-1">
-                            {filterCategories(module.categories).map((category) => (
-                              <div key={category.id} className="space-y-1">
-                                <button
-                                  onClick={() => onSelectCategory(category.id)}
-                                  className={`w-full text-left p-2 text-sm rounded-lg transition-colors ${
-                                    currentCategoryId === category.id
-                                      ? 'bg-gray-100 text-blue-600'
-                                      : 'hover:bg-gray-50'
-                                  }`}
-                                >
-                                  <div className="space-y-1">
-                                    <div className="flex justify-between items-center">
-                                      <span>{category.title}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[10px]">
-                                      <span className="text-gray-400">
-                                        {category.questions.length} {category.questions.length === 1 ? 'Frage' : 'Fragen'}
-                                      </span>
-                                      {(() => {
-                                        const { attempted, correct, total } = getCategoryProgress(category.id, category.questions);
-                                        const incorrect = attempted - correct;
-                                        if (correct === total && total > 0) {
-                                          return (
-                                            <span className="text-green-500">
-                                              Alle korrekt beantwortet
-                                            </span>
-                                          );
-                                        }
-                                        if (incorrect > 0) {
-                                          return (
-                                            <span className="text-red-400">
-                                              {incorrect} falsch beantwortet
-                                            </span>
-                                          );
-                                        }
-                                        return null;
-                                      })()}
-                                    </div>
-                                  </div>
-                                </button>
-
-                                {currentCategoryId === category.id && (
-                                  <div className="ml-4 space-y-1">
-                                    {filterQuestions(category.questions).map((question) => (
-                                      <div key={question.id}>
-                                        <button
-                                          onClick={() => onSelectQuestion(question.id)}
-                                          className={`w-full text-left p-2 text-sm rounded-lg transition-colors flex items-center gap-2 ${
-                                            currentQuestionId === question.id
-                                              ? 'bg-gray-50 text-blue-600'
-                                              : 'hover:bg-gray-50'
-                                          }`}
-                                        >
-                                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                            getQuestionStatus(question.id) === 'correct'
-                                              ? 'bg-green-500'
-                                              : getQuestionStatus(question.id) === 'incorrect'
-                                              ? 'bg-red-500'
-                                              : 'bg-gray-300'
-                                          }`} />
-                                          
-                                          <span className="truncate">
-                                            Frage {question.id} ({question.points} {question.points === 1 ? 'Punkt' : 'Punkte'})
-                                          </span>
-                                        </button>
+                                        )}
                                       </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                                      <div 
+                                        className="h-full bg-red-500 transition-all duration-300 relative hover:opacity-80"
+                                        style={{ width: `${progress.incorrectPercent}%` }}
+                                      >
+                                        {progress.incorrect > 0 && (
+                                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
+                                            <div className="bg-red-100 text-red-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
+                                              {progress.incorrect} falsch beantwortet
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div 
+                                        className="h-full bg-gray-300 transition-all duration-300 relative hover:opacity-80"
+                                        style={{ width: `${progress.unansweredPercent}%` }}
+                                      >
+                                        {progress.unanswered > 0 && (
+                                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block">
+                                            <div className="bg-gray-100 text-gray-800 text-xs rounded-md py-1 px-2 whitespace-nowrap">
+                                              {progress.unanswered} unbeantwortet
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          </button>
+
+                          {currentModuleId === module.id && (
+                            <div className="ml-4 space-y-1">
+                              {filterCategories(module.categories).map((category) => (
+                                <div key={category.id} className="space-y-1">
+                                  <button
+                                    onClick={() => onSelectCategory(category.id)}
+                                    className={`w-full text-left p-2 text-sm rounded-lg transition-colors ${
+                                      currentCategoryId === category.id
+                                        ? 'bg-gray-100 text-blue-600'
+                                        : 'hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    <div className="space-y-1">
+                                      <div className="flex justify-between items-center">
+                                        <span>{category.title}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-[10px]">
+                                        <span className="text-gray-400">
+                                          {category.questions.length} {category.questions.length === 1 ? 'Frage' : 'Fragen'}
+                                        </span>
+                                        {(() => {
+                                          const { attempted, correct, total } = getCategoryProgress(category.id, category.questions);
+                                          const incorrect = attempted - correct;
+                                          if (correct === total && total > 0) {
+                                            return (
+                                              <span className="text-green-500">
+                                                Alle korrekt beantwortet
+                                              </span>
+                                            );
+                                          }
+                                          if (incorrect > 0) {
+                                            return (
+                                              <span className="text-red-400">
+                                                {incorrect} falsch beantwortet
+                                              </span>
+                                            );
+                                          }
+                                          return null;
+                                        })()}
+                                      </div>
+                                    </div>
+                                  </button>
+
+                                  {currentCategoryId === category.id && (
+                                    <div className="ml-4 space-y-1">
+                                      {filterQuestions(category.questions).map((question) => (
+                                        <div key={question.id}>
+                                          <button
+                                            onClick={() => onSelectQuestion(question.id)}
+                                            className={`w-full text-left p-2 text-sm rounded-lg transition-colors flex items-center gap-2 ${
+                                              currentQuestionId === question.id
+                                                ? 'bg-gray-50 text-blue-600'
+                                                : 'hover:bg-gray-50'
+                                            }`}
+                                          >
+                                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                              getQuestionStatus(question.id) === 'correct'
+                                                ? 'bg-green-500'
+                                                : getQuestionStatus(question.id) === 'incorrect'
+                                                ? 'bg-red-500'
+                                                : 'bg-gray-300'
+                                            }`} />
+                                            
+                                            <span className="truncate">
+                                              Frage {question.id} ({question.points} {question.points === 1 ? 'Punkt' : 'Punkte'})
+                                            </span>
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )
-            ))}
+                )
+              ))}
+            </div>
           </div>
         </div>
       </div>

@@ -13,6 +13,11 @@ interface RightSidebarProps {
     progressBarType: 'catalog' | 'module' | 'category';
   }) => void;
   onResetProgress: () => void;
+  time: number;
+  onTimeUpdate: (time: number) => void;
+  isTimerRunning: boolean;
+  onTimerRunningChange: (isRunning: boolean) => void;
+  onSelectQuestion: (questionId: string) => void;
 }
 
 export default function RightSidebar({ 
@@ -23,11 +28,14 @@ export default function RightSidebar({
     progressBarType: 'catalog'
   },
   onUpdateSettings,
-  onResetProgress
+  onResetProgress,
+  time,
+  onTimeUpdate,
+  isTimerRunning,
+  onTimerRunningChange,
+  onSelectQuestion
 }: RightSidebarProps) {
   const [activeTab, setActiveTab] = useState<'statistics' | 'settings'>('statistics');
-  const [time, setTime] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -40,12 +48,12 @@ export default function RightSidebar({
   }, [intervalId]);
 
   const startTimer = () => {
-    if (!isRunning) {
+    if (!isTimerRunning) {
       const id = setInterval(() => {
-        setTime(prevTime => prevTime + 1);
+        onTimeUpdate(time + 1);
       }, 1000);
       setIntervalId(id);
-      setIsRunning(true);
+      onTimerRunningChange(true);
     }
   };
 
@@ -54,7 +62,7 @@ export default function RightSidebar({
       clearInterval(intervalId);
       setIntervalId(null);
     }
-    setIsRunning(false);
+    onTimerRunningChange(false);
   };
 
   const resetTimer = () => {
@@ -62,8 +70,8 @@ export default function RightSidebar({
       clearInterval(intervalId);
       setIntervalId(null);
     }
-    setIsRunning(false);
-    setTime(0);
+    onTimerRunningChange(false);
+    onTimeUpdate(0);
   };
 
   const formatTime = (seconds: number) => {
@@ -117,34 +125,60 @@ export default function RightSidebar({
     setShowResetConfirm(false);
   };
 
+  const handleSettingsChange = (newSettings: typeof settings) => {
+    onUpdateSettings(newSettings);
+    
+    // Wenn der Filter für falsche Antworten aktiviert wird
+    if (newSettings.showOnlyWrongAnswers) {
+      // Finde die erste falsch beantwortete Frage
+      const firstWrongQuestion = questions.find(question => {
+        const questionProgress = progress.find(p => p.questionId === question.id);
+        return questionProgress && !questionProgress.isCorrect;
+      });
+
+      if (firstWrongQuestion) {
+        // Setze den Index auf die erste falsche Frage
+        const wrongQuestions = questions.filter(question => {
+          const questionProgress = progress.find(p => p.questionId === question.id);
+          return questionProgress && !questionProgress.isCorrect;
+        });
+        const questionIndex = wrongQuestions.findIndex(q => q.id === firstWrongQuestion.id);
+        // Setze den Index über die Props
+        onSelectQuestion(firstWrongQuestion.id);
+      }
+    }
+  };
+
   return (
-    <div className="w-80 bg-white h-screen shadow-lg overflow-y-auto flex flex-col">
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200">
-        <button
-          className={`flex-1 py-4 text-sm font-medium transition-colors
-            ${activeTab === 'statistics' 
-              ? 'text-blue-600 border-b-2 border-blue-600' 
-              : 'text-gray-500 hover:text-gray-700'
-            }`}
-          onClick={() => setActiveTab('statistics')}
-        >
-          Statistiken
-        </button>
-        <button
-          className={`flex-1 py-4 text-sm font-medium transition-colors
-            ${activeTab === 'settings' 
-              ? 'text-blue-600 border-b-2 border-blue-600' 
-              : 'text-gray-500 hover:text-gray-700'
-            }`}
-          onClick={() => setActiveTab('settings')}
-        >
-          Einstellungen
-        </button>
+    <div className="w-80 bg-white h-screen shadow-lg flex flex-col">
+      {/* Tabs - Fixiert */}
+      <div className="flex-shrink-0 border-b border-gray-200">
+        <div className="flex">
+          <button
+            className={`flex-1 py-4 text-sm font-medium transition-colors
+              ${activeTab === 'statistics' 
+                ? 'text-blue-600 border-b-2 border-blue-600' 
+                : 'text-gray-500 hover:text-gray-700'
+              }`}
+            onClick={() => setActiveTab('statistics')}
+          >
+            Statistiken
+          </button>
+          <button
+            className={`flex-1 py-4 text-sm font-medium transition-colors
+              ${activeTab === 'settings' 
+                ? 'text-blue-600 border-b-2 border-blue-600' 
+                : 'text-gray-500 hover:text-gray-700'
+              }`}
+            onClick={() => setActiveTab('settings')}
+          >
+            Einstellungen
+          </button>
+        </div>
       </div>
 
-      {/* Tab Inhalte */}
-      <div className="flex-1 p-6">
+      {/* Scrollbarer Bereich */}
+      <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'statistics' ? (
           <div className="space-y-6">
             {/* Fortschritts-Card */}
@@ -256,14 +290,14 @@ export default function RightSidebar({
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={isRunning ? pauseTimer : startTimer}
+                    onClick={isTimerRunning ? pauseTimer : startTimer}
                     className={`flex-1 py-2 px-4 rounded-md text-sm font-medium text-white ${
-                      isRunning 
+                      isTimerRunning 
                         ? 'bg-yellow-500 hover:bg-yellow-600' 
                         : 'bg-green-500 hover:bg-green-600'
                     } transition-colors`}
                   >
-                    {isRunning ? 'Pause' : 'Start'}
+                    {isTimerRunning ? 'Pause' : 'Start'}
                   </button>
                   <button
                     onClick={resetTimer}
@@ -320,7 +354,7 @@ export default function RightSidebar({
                   Nur falsch beantwortete Fragen anzeigen
                 </span>
                 <button
-                  onClick={() => onUpdateSettings({ 
+                  onClick={() => handleSettingsChange({ 
                     ...settings, 
                     showOnlyWrongAnswers: !settings.showOnlyWrongAnswers 
                   })}
